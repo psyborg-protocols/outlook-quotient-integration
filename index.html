@@ -361,27 +361,29 @@
                     source: "outlook-addin-quotient"
                 };
 
-                const response = await fetch(WEBHOOK_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
-                });
+                    // Fire-and-forget POST to Zapier
+                    await fetch(WEBHOOK_URL, {
+                        method: "POST",
+                        // No custom headers so the browser keeps it as simple as possible
+                        // and avoids strict CORS preflight problems.
+                        body: JSON.stringify(payload)
+                        // If you still get blocked, you can try adding:
+                        // mode: "no-cors"
+                    });
 
-                if (!response.ok) throw new Error("Zapier Error");
+                    // If we get here without throwing, we treat it as success.
+                    setLoading(false);
+                    showAlert("Lead sent successfully!", 'success');
 
-                // Success State
-                setLoading(false);
-                showAlert("Lead sent successfully!", 'success');
-                
-                const btn = document.getElementById("sendBtn");
-                btn.classList.remove("bg-blue-600", "hover:bg-blue-700");
-                btn.classList.add("bg-emerald-600", "hover:bg-emerald-700");
-                document.getElementById("btnText").textContent = "Success";
-                document.getElementById("btnIcon").innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
-                
-                setTimeout(() => {
-                    try { Office.context.ui.closeContainer(); } catch {}
-                }, 1500);
+                    const btn = document.getElementById("sendBtn");
+                    btn.classList.remove("bg-blue-600", "hover:bg-blue-700");
+                    btn.classList.add("bg-emerald-600", "hover:bg-emerald-700");
+                    document.getElementById("btnText").textContent = "Success";
+                    document.getElementById("btnIcon").innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
+
+                    setTimeout(() => {
+                        try { Office.context.ui.closeContainer(); } catch {}
+                    }, 1500);
 
             } catch (err) {
                 console.error(err);
