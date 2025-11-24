@@ -301,14 +301,17 @@
             const email = (document.getElementById("email").value || "").trim();
             const firstName = (document.getElementById("firstName").value || "").trim();
             const subject = (document.getElementById("leadSubject").value || "").trim();
+            const message = (document.getElementById("leadMessage").value || "").trim();
 
             if (!firstName) return "First name is missing.";
             if (!email) return "Email address is missing.";
             if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return "Invalid email format.";
             if (!subject) return "Subject line is missing.";
+            if (!message) return "Message is missing.";
 
             return null; // No errors
         }
+
 
         function setLoading(isLoading) {
             const btn = document.getElementById("sendBtn");
