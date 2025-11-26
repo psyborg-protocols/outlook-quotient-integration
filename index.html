@@ -96,7 +96,7 @@
         <div class="flex justify-between items-center">
             <div>
                 <h1 class="text-base font-semibold text-slate-900">New Lead</h1>
-                <p class="text-xs text-slate-500">Extract details from email</p>
+                <p class="text-xs text-slate-500">Details extracted from email</p>
             </div>
             <!-- Status Dot -->
             <div id="statusDot" class="w-2 h-2 rounded-full bg-slate-200"></div>
@@ -113,25 +113,9 @@
             <input type="hidden" id="internetMessageId" />
             <input type="hidden" id="receivedTime" />
 
-            <!-- SECTION: CLASSIFICATION -->
-            <div>
-                <label class="section-label">Classification</label>
-                <div class="relative">
-                    <select id="leadOption" class="field appearance-none font-medium text-slate-700">
-                        <option value="New Inquiry">New Inquiry</option>
-                        <option value="Existing Client Upsell">Existing Client Upsell</option>
-                        <option value="Hot Lead">Hot Lead</option>
-                        <option value="Cold Outreach">Cold Outreach</option>
-                    </select>
-                    <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                </div>
-            </div>
-
             <!-- SECTION: CONTACT INFO -->
-            <div>
-                <label class="section-label">Contact Details</label>
+            <div style="margin-top:0;">
+                <label class="section-label" >Contact Details</label>
                 <div class="space-y-3">
                     
                     <!-- Name Row -->
@@ -354,7 +338,7 @@
                     lead_email: (document.getElementById("email").value || "").trim(),
                     lead_company: (document.getElementById("company").value || "").trim(),
                     lead_phone: (document.getElementById("phone").value || "").trim(),
-                    lead_type: document.getElementById("leadOption").value,
+                    // lead_type removed
                     submittedByEmail: userProfile.emailAddress || "",
                     submittedByName: userProfile.displayName || "",
                     internetMessageId: document.getElementById("internetMessageId").value || "",
