@@ -311,57 +311,6 @@
                 setLoading(false);
             }
         }
-            showAlert(null);
-            setLoading(true);
-
-            try {
-                // 1. Get Token via NAA
-                const token = await getGraphAccessToken();
-
-                // 2. Prepare Data
-                const fields = {
-                    Title: getValue("leadSubject"),
-                    LeadEmail: getValue("email"),
-                    FirstName: getValue("firstName"),
-                    LastName: getValue("lastName"),
-                    Company: getValue("company"),
-                    Phone: getValue("phone"),
-                    Message: getValue("leadMessage"),
-                    InternetMessageId: getValue("internetMessageId"),
-                    ReceivedTime: getValue("receivedTime"),
-                    Source: "Outlook Add-in"
-                };
-
-                // 3. Send to Graph
-                const url = `https://graph.microsoft.com/v1.0/sites/${SHAREPOINT_SITE_ID}/lists/${SHAREPOINT_LIST_ID}/items`;
-                const response = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${token}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ fields })
-                });
-
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(`Graph Error: ${response.status} - ${errText}`);
-                }
-
-                // 4. Success UI
-                showAlert("Lead saved to SharePoint!", 'success');
-                setLoading(false);
-                markEmailAsProcessed();
-                
-                // Close panel after delay
-                setTimeout(() => { try { Office.context.ui.closeContainer(); } catch {} }, 2000);
-
-            } catch (err) {
-                console.error(err);
-                showAlert("Error sending lead: " + err.message, 'error');
-                setLoading(false);
-            }
-        }
 
         function getValue(id) {
             return (document.getElementById(id).value || "").trim();
