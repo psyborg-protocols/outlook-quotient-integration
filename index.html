@@ -8,6 +8,9 @@
     <!-- Office.js -->
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 
+    <!-- MSAL.js v3 (REQUIRED for Nested App Authentication) -->
+    <script src="https://alcdn.msauth.net/browser/3.27.0/js/msal-browser.min.js"></script>
+
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,76 +20,29 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #ffffff;
-        }
-
-        /* Custom Input Styles with Icons */
-        .input-group {
-            position: relative;
-        }
-
-        .input-icon {
-            position: absolute;
-            left: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #94a3b8; /* slate-400 */
-            width: 16px;
-            height: 16px;
-            pointer-events: none;
-            transition: color 0.2s;
-        }
-
-        .field {
-            width: 100%;
-            padding: 10px 12px 10px 36px; /* Left padding for icon */
-            font-size: 0.875rem; /* text-sm */
-            line-height: 1.25rem;
-            color: #1e293b; /* slate-800 */
-            background-color: #fff;
-            border: 1px solid #e2e8f0; /* slate-200 */
-            border-radius: 6px;
-            transition: all 0.2s ease-in-out;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #ffffff; }
         
-        .field.no-icon {
-            padding-left: 12px;
+        /* Custom UI Styles */
+        .input-group { position: relative; }
+        .input-icon {
+            position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+            color: #94a3b8; width: 16px; height: 16px; pointer-events: none; transition: color 0.2s;
         }
-
-        .field:hover {
-            border-color: #cbd5e1; /* slate-300 */
+        .field {
+            width: 100%; padding: 10px 12px 10px 36px; font-size: 0.875rem;
+            color: #1e293b; background-color: #fff; border: 1px solid #e2e8f0;
+            border-radius: 6px; transition: all 0.2s ease-in-out;
         }
-
-        .field:focus {
-            outline: none;
-            border-color: #3b82f6; /* blue-500 */
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-
-        .field:focus + .input-icon {
-            color: #3b82f6;
-        }
-
+        .field.no-icon { padding-left: 12px; }
+        .field:hover { border-color: #cbd5e1; }
+        .field:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .field:focus + .input-icon { color: #3b82f6; }
         .section-label {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.025em;
-            color: #64748b; /* slate-500 */
-            margin-bottom: 8px;
-            display: block;
+            font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.025em; color: #64748b; margin-bottom: 8px; display: block;
         }
-
-        /* Hide Scrollbar but allow scroll */
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -98,167 +54,182 @@
                 <h1 class="text-base font-semibold text-slate-900">New Lead</h1>
                 <p class="text-xs text-slate-500">Extract details from email</p>
             </div>
-            <!-- Status Dot -->
             <div id="statusDot" class="w-2 h-2 rounded-full bg-slate-200"></div>
         </div>
-        <!-- Alert Box (Hidden by default) -->
         <div id="alertBox" class="hidden mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-600"></div>
     </div>
 
-    <!-- Main Scrollable Content -->
+    <!-- Main Content -->
     <div class="flex-1 overflow-y-auto no-scrollbar bg-white">
         <form id="leadForm" class="px-5 py-6 space-y-6" onsubmit="return false;">
-            
-            <!-- Hidden Meta Fields -->
             <input type="hidden" id="internetMessageId" />
             <input type="hidden" id="receivedTime" />
 
-            <!-- SECTION: CONTACT INFO -->
+            <!-- Contact Info -->
             <div style="margin-top:0;">
                 <label class="section-label">Contact Details</label>
                 <div class="space-y-3">
-                    
-                    <!-- Name Row -->
                     <div class="flex gap-3">
                         <div class="input-group w-1/2">
                             <input id="firstName" type="text" class="field" placeholder="First Name" />
-                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="12" cy="7" r="4"></circle>
-                            </svg>
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                         </div>
                         <div class="input-group w-1/2">
                             <input id="lastName" type="text" class="field no-icon" placeholder="Last Name" />
                         </div>
                     </div>
-
-                    <!-- Email -->
                     <div class="input-group">
                         <input id="email" type="email" class="field" placeholder="email@address.com" />
-                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                            <polyline points="22,6 12,13 2,6"></polyline>
-                        </svg>
+                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                     </div>
-
-                    <!-- Company -->
                     <div class="input-group">
                         <input id="company" type="text" class="field" placeholder="Company Name" />
-                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-4h8v4"></path>
-                        </svg>
+                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-4h8v4"></path></svg>
                     </div>
-
-                    <!-- Phone -->
                     <div class="input-group">
                         <input id="phone" type="text" class="field" placeholder="Phone Number" />
-                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                        </svg>
+                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                     </div>
                 </div>
             </div>
 
-            <!-- SECTION: CONTEXT -->
+            <!-- Context -->
             <div>
                 <label class="section-label">Context</label>
                 <div class="space-y-3">
                     <div class="input-group">
                         <input id="leadSubject" type="text" class="field font-medium text-slate-900" placeholder="Subject Line" />
-                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
-                            <line x1="4" y1="22" x2="4" y2="15"></line>
-                        </svg>
+                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
                     </div>
-
                     <div class="input-group">
                         <textarea id="leadMessage" rows="5" class="field" style="padding-left: 12px; min-height: 100px;" placeholder="Add notes, requirements, or quantities..."></textarea>
                     </div>
                 </div>
             </div>
-            
-            <!-- Extra padding at bottom so content isn't hidden behind sticky footer -->
             <div class="h-10"></div>
         </form>
     </div>
 
-    <!-- Sticky Footer -->
+    <!-- Footer -->
     <div class="shrink-0 p-5 bg-white border-t border-slate-100 z-20">
-        <button id="sendBtn" type="button" 
-            class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 active:scale-[0.98] transition-all duration-200 shadow-sm disabled:opacity-70 disabled:pointer-events-none">
-            
+        <button id="sendBtn" type="button" class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 active:scale-[0.98] transition-all duration-200 shadow-sm disabled:opacity-70 disabled:pointer-events-none">
             <span id="btnText">Submit Lead</span>
-            
-            <!-- Send Icon -->
-            <svg id="btnIcon" class="w-4 h-4 transition-transform group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
-
-            <!-- Loading Spinner (Hidden) -->
-            <svg id="btnSpinner" class="hidden animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+            <svg id="btnIcon" class="w-4 h-4 transition-transform group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            <svg id="btnSpinner" class="hidden animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
         </button>
-        <div class="text-center mt-3">
-             <span class="text-[10px] text-slate-300 font-bold tracking-widest uppercase">Powered by BrandyWise</span>
-        </div>
+        <div class="text-center mt-3"><span class="text-[10px] text-slate-300 font-bold tracking-widest uppercase">Powered by BrandyWise</span></div>
     </div>
 
     <script>
-        // --- CONFIGURATION ---
-        const WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25482238/uzen7zq/";
-        // ---------------------
+        // ==========================================
+        //  CONFIGURATION (User Edits Required)
+        // ==========================================
+        const msalConfig = {
+            auth: {
+                clientId: "YOUR_AAD_APP_CLIENT_ID", // TODO: Enter your Client ID
+                authority: "https://login.microsoftonline.com/YOUR_TENANT_ID", // TODO: Enter your Tenant ID
+                redirectUri: window.location.origin + window.location.pathname, // Must match Azure Portal
+                supportsNestedAppAuth: true // Explicitly enable NAA logic
+            },
+            cache: {
+                cacheLocation: "sessionStorage"
+            }
+        };
 
-        Office.onReady(function (info) {
+        const graphScopes = ["Sites.ReadWrite.All"];
+        const SHAREPOINT_SITE_ID = "brandywinematerialsllc.sharepoint.com,07a1465e-a31a-4437-aca2-0efe61b7f2c6,4b1abd1c-08c6-4574-b350-654376a1e954";
+        const SHAREPOINT_LIST_ID = "e7c4c861-7fbb-4661-b0a8-6e37e588c9c3";
+        // ==========================================
+
+        let msalInstance;
+
+        Office.onReady(async (info) => {
             if (info.host === Office.HostType.Outlook) {
+                // Initialize NAA (Nested App Auth)
+                await initializeMsal();
+                
+                // Initialize UI
                 initializeForm();
             }
         });
 
+        // --- AUTH: NAA INITIALIZATION ---
+        async function initializeMsal() {
+            try {
+                // createNestablePublicClientApplication is the key for NAA support
+                // It automatically detects if it is running inside Outlook
+                msalInstance = await msal.createNestablePublicClientApplication(msalConfig);
+                console.log("MSAL Initialized with NAA support");
+            } catch (err) {
+                console.error("Error initializing MSAL:", err);
+                showAlert("Authentication failed to initialize.", 'error');
+            }
+        }
+
+        // --- AUTH: GET TOKEN ---
+        async function getGraphAccessToken() {
+            if (!msalInstance) {
+                throw new Error("MSAL not initialized");
+            }
+
+            // In NAA, we check for an active account provided by the host
+            const account = msalInstance.getActiveAccount();
+            
+            const request = {
+                scopes: graphScopes,
+                account: account
+            };
+
+            try {
+                // Try to get token silently (NAA handles the brokerage to Outlook)
+                const result = await msalInstance.acquireTokenSilent(request);
+                return result.accessToken;
+            } catch (error) {
+                console.warn("Silent auth failed, attempting popup:", error);
+                // Fallback to popup if silent fails (e.g., consent needed)
+                const result = await msalInstance.acquireTokenPopup(request);
+                return result.accessToken;
+            }
+        }
+
+        // --- UI LOGIC ---
         function initializeForm() {
             const item = Office.context.mailbox.item;
 
-            // Update status dot to show we are ready
+            // Status indicator
             document.getElementById("statusDot").classList.remove("bg-slate-200");
             document.getElementById("statusDot").classList.add("bg-emerald-400");
 
-            // Basic email context
+            // Extract data
             const from = item.from || item.sender || {};
             const leadEmail = from.emailAddress || "";
             const leadName = from.displayName || "";
-            const subject = item.subject || "";
-            const internetMessageId = item.internetMessageId || "";
-            const created = item.dateTimeCreated || new Date();
-
-            // Pre-fill visible fields
-            const emailInput = document.getElementById("email");
-            const subjectInput = document.getElementById("leadSubject");
             
-            if(emailInput) emailInput.value = leadEmail;
-            if(subjectInput) subjectInput.value = subject;
-
-            // Name splitting logic
+            // Populate fields
+            safeSetValue("email", leadEmail);
+            safeSetValue("leadSubject", item.subject || "");
+            
+            // Name parsing
             const parts = (leadName || "").trim().split(/\s+/);
-            if (parts.length > 0 && parts[0]) {
-                document.getElementById("firstName").value = parts[0];
-            }
-            if (parts.length > 1) {
-                document.getElementById("lastName").value = parts.slice(1).join(" ");
-            }
+            if (parts.length > 0) safeSetValue("firstName", parts[0]);
+            if (parts.length > 1) safeSetValue("lastName", parts.slice(1).join(" "));
 
-            // Hidden meta fields
-            document.getElementById("internetMessageId").value = internetMessageId;
+            // Metadata
+            safeSetValue("internetMessageId", item.internetMessageId || "");
+            const created = item.dateTimeCreated || new Date();
             try {
                 const dt = created instanceof Date ? created : new Date(created);
-                document.getElementById("receivedTime").value = dt.toISOString();
+                safeSetValue("receivedTime", dt.toISOString());
             } catch {
-                document.getElementById("receivedTime").value = "";
+                safeSetValue("receivedTime", "");
             }
 
-            // Wire up button
             document.getElementById("sendBtn").addEventListener("click", sendLead);
+        }
+
+        function safeSetValue(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.value = val;
         }
 
         function showAlert(message, type = 'error') {
@@ -271,148 +242,86 @@
             alertBox.textContent = message;
             
             if (type === 'success') {
-                alertBox.classList.replace("bg-red-50", "bg-emerald-50");
-                alertBox.classList.replace("border-red-100", "border-emerald-100");
-                alertBox.classList.replace("text-red-600", "text-emerald-700");
+                alertBox.className = "mt-3 p-2 bg-emerald-50 border border-emerald-100 rounded text-xs text-emerald-700";
             } else {
-                alertBox.classList.replace("bg-emerald-50", "bg-red-50");
-                alertBox.classList.replace("border-emerald-100", "border-red-100");
-                alertBox.classList.replace("text-emerald-700", "text-red-600");
-            }
-        }
-
-        function validateForm() {
-            const email = (document.getElementById("email").value || "").trim();
-            const firstName = (document.getElementById("firstName").value || "").trim();
-            const subject = (document.getElementById("leadSubject").value || "").trim();
-            const message = (document.getElementById("leadMessage").value || "").trim();
-
-            if (!firstName) return "First name is missing.";
-            if (!email) return "Email address is missing.";
-            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return "Invalid email format.";
-            if (!subject) return "Subject line is missing.";
-            if (!message) return "Message is missing.";
-
-            return null; // No errors
-        }
-
-        // Updated function to handle Category + Color
-        function markEmailAsProcessed() {
-            const item = Office.context.mailbox.item;
-            const categoryName = "Lead Submitted";
-
-            // Helper to actually apply the tag
-            function applyTag() {
-                item.categories.addAsync([categoryName], function (asyncResult) {
-                    if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-                        console.warn("Failed to add category:", asyncResult.error.message);
-                    } else {
-                        console.log("Category 'Lead Submitted' added successfully.");
-                    }
-                });
-            }
-
-            // Check if Master Categories API is available (Mailbox 1.8+)
-            // This attempts to add the category as GREEN (Preset 5) if it doesn't exist
-            if (Office.context.mailbox.masterCategories) {
-                const masterCat = {
-                    displayName: categoryName,
-                    color: Office.MailboxEnums.CategoryColor.Preset5 // Preset5 is usually Green
-                };
-
-                // Try adding to master list first
-                Office.context.mailbox.masterCategories.addAsync([masterCat], function(result) {
-                    // Whether it succeeds (created new) or fails (already exists), we tag the item
-                    applyTag();
-                });
-            } else {
-                // Older Outlooks: Just add the text tag
-                applyTag();
+                alertBox.className = "mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-600";
             }
         }
 
         function setLoading(isLoading) {
             const btn = document.getElementById("sendBtn");
-            const btnText = document.getElementById("btnText");
-            const btnIcon = document.getElementById("btnIcon");
-            const btnSpinner = document.getElementById("btnSpinner");
-
             btn.disabled = isLoading;
-            if (isLoading) {
-                btnText.textContent = "Sending...";
-                btnIcon.classList.add("hidden");
-                btnSpinner.classList.remove("hidden");
-            } else {
-                btnText.textContent = "Submit Lead";
-                btnIcon.classList.remove("hidden");
-                btnSpinner.classList.add("hidden");
-            }
+            document.getElementById("btnText").textContent = isLoading ? "Sending..." : "Submit Lead";
+            document.getElementById("btnIcon").style.display = isLoading ? "none" : "block";
+            document.getElementById("btnSpinner").style.display = isLoading ? "block" : "none";
         }
 
+        // --- MAIN ACTION ---
         async function sendLead() {
-            showAlert(null); // Clear errors
-            
-            const errorMsg = validateForm();
-            if (errorMsg) {
-                showAlert(errorMsg, 'error');
-                return;
-            }
-
+            showAlert(null);
             setLoading(true);
-            
-            try {
-                const item = Office.context.mailbox.item;
-                const userProfile = Office.context.mailbox.userProfile;
 
-                const payload = {
-                    lead_subject: (document.getElementById("leadSubject").value || "").trim(),
-                    lead_message: (document.getElementById("leadMessage").value || "").trim(),
-                    lead_name_first: (document.getElementById("firstName").value || "").trim(),
-                    lead_name_last: (document.getElementById("lastName").value || "").trim(),
-                    lead_email: (document.getElementById("email").value || "").trim(),
-                    lead_company: (document.getElementById("company").value || "").trim(),
-                    lead_phone: (document.getElementById("phone").value || "").trim(),
-                    submittedByEmail: userProfile.emailAddress || "",
-                    submittedByName: userProfile.displayName || "",
-                    internetMessageId: document.getElementById("internetMessageId").value || "",
-                    receivedTime: document.getElementById("receivedTime").value || "",
-                    originalSubject: item.subject || "",
-                    mailboxHost: (Office.context.mailbox.diagnostics && Office.context.mailbox.diagnostics.hostName) || "",
-                    source: "outlook-addin-quotient"
+            try {
+                // 1. Get Token via NAA
+                const token = await getGraphAccessToken();
+
+                // 2. Prepare Data
+                const fields = {
+                    Title: getValue("leadSubject"),
+                    LeadEmail: getValue("email"),
+                    FirstName: getValue("firstName"),
+                    LastName: getValue("lastName"),
+                    Company: getValue("company"),
+                    Phone: getValue("phone"),
+                    Message: getValue("leadMessage"),
+                    InternetMessageId: getValue("internetMessageId"),
+                    ReceivedTime: getValue("receivedTime"),
+                    Source: "Outlook Add-in"
                 };
 
-                    // Fire-and-forget POST to Zapier
-                    await fetch(WEBHOOK_URL, {
-                        method: "POST",
-                        // No custom headers so the browser keeps it as simple as possible
-                        // and avoids strict CORS preflight problems.
-                        body: JSON.stringify(payload)
-                        // If you still get blocked, you can try adding:
-                        // mode: "no-cors"
-                    });
+                // 3. Send to Graph
+                const url = `https://graph.microsoft.com/v1.0/sites/${SHAREPOINT_SITE_ID}/lists/${SHAREPOINT_LIST_ID}/items`;
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ fields })
+                });
 
-                    // If we get here without throwing, we treat it as success.
-                    setLoading(false);
-                    showAlert("Lead sent successfully!", 'success');
-                    
-                    // Mark the email
-                    markEmailAsProcessed();
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Graph Error: ${response.status} - ${errText}`);
+                }
 
-                    const btn = document.getElementById("sendBtn");
-                    btn.classList.remove("bg-blue-600", "hover:bg-blue-700");
-                    btn.classList.add("bg-emerald-600", "hover:bg-emerald-700");
-                    document.getElementById("btnText").textContent = "Success";
-                    document.getElementById("btnIcon").innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
-
-                    setTimeout(() => {
-                        try { Office.context.ui.closeContainer(); } catch {}
-                    }, 1500);
+                // 4. Success UI
+                showAlert("Lead saved to SharePoint!", 'success');
+                setLoading(false);
+                markEmailAsProcessed();
+                
+                // Close panel after delay
+                setTimeout(() => { try { Office.context.ui.closeContainer(); } catch {} }, 2000);
 
             } catch (err) {
                 console.error(err);
-                showAlert("Connection failed. Please try again.", 'error');
-                setLoading(false); 
+                showAlert("Error sending lead: " + err.message, 'error');
+                setLoading(false);
             }
+        }
+
+        function getValue(id) {
+            return (document.getElementById(id).value || "").trim();
+        }
+
+        function markEmailAsProcessed() {
+            // Adds a category to the email in Outlook
+            const item = Office.context.mailbox.item;
+            item.categories.addAsync(["Lead Submitted"], (result) => {
+                if (result.status === Office.AsyncResultStatus.Failed) {
+                    console.log("Could not add category.");
+                }
+            });
         }
     </script>
 </body>
