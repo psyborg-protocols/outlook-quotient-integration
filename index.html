@@ -265,6 +265,59 @@
                 // 1. Get Token via NAA
                 const token = await getGraphAccessToken();
 
+                // 2. Prepare Data (MAPPED TO INTERNAL SHAREPOINT NAMES from your JSON)
+                const fields = {
+                    Title: getValue("leadSubject"),
+                    
+                    // Mapped fields based on your Graph Explorer response:
+                    field_1: getValue("email"),           // LeadEmail
+                    field_2: getValue("firstName"),       // FirstName
+                    field_3: getValue("lastName"),        // LastName
+                    field_4: getValue("company"),         // Company
+                    field_5: getValue("phone"),           // Phone
+                    field_6: getValue("leadMessage"),     // Message
+                    field_7: getValue("internetMessageId"), // InternetMessageId
+                    field_8: getValue("receivedTime"),    // ReceivedTime
+                    field_9: "Outlook Add-in"             // Source
+                };
+
+                // 3. Send to Graph
+                const url = `https://graph.microsoft.com/v1.0/sites/${SHAREPOINT_SITE_ID}/lists/${SHAREPOINT_LIST_ID}/items`;
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ fields })
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Graph Error: ${response.status} - ${errText}`);
+                }
+
+                // 4. Success UI
+                showAlert("Lead saved to SharePoint!", 'success');
+                setLoading(false);
+                markEmailAsProcessed();
+                
+                // Close panel after delay
+                setTimeout(() => { try { Office.context.ui.closeContainer(); } catch {} }, 2000);
+
+            } catch (err) {
+                console.error(err);
+                showAlert("Error sending lead: " + err.message, 'error');
+                setLoading(false);
+            }
+        }
+            showAlert(null);
+            setLoading(true);
+
+            try {
+                // 1. Get Token via NAA
+                const token = await getGraphAccessToken();
+
                 // 2. Prepare Data
                 const fields = {
                     Title: getValue("leadSubject"),
