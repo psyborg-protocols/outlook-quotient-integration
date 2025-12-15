@@ -5,18 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Send Lead</title>
 
-    <!-- Office.js -->
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 
-    <!-- MSAL.js v3 (REQUIRED for Nested App Authentication) -->
     <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"></script>
 
-    <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
@@ -47,7 +43,6 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
     
-    <!-- Top Bar -->
     <div class="shrink-0 px-5 py-4 border-b border-slate-100 bg-white z-20">
         <div class="flex justify-between items-center">
             <div>
@@ -59,13 +54,12 @@
         <div id="alertBox" class="hidden mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-600"></div>
     </div>
 
-    <!-- Main Content -->
     <div class="flex-1 overflow-y-auto no-scrollbar bg-white">
         <form id="leadForm" class="px-5 py-6 space-y-6" onsubmit="return false;">
             <input type="hidden" id="internetMessageId" />
+            <input type="hidden" id="conversationId" />
             <input type="hidden" id="receivedTime" />
 
-            <!-- Contact Info -->
             <div style="margin-top:0;">
                 <label class="section-label">Contact Details</label>
                 <div class="space-y-3">
@@ -93,7 +87,6 @@
                 </div>
             </div>
 
-            <!-- Context -->
             <div>
                 <label class="section-label">Context</label>
                 <div class="space-y-3">
@@ -110,7 +103,6 @@
         </form>
     </div>
 
-    <!-- Footer -->
     <div class="shrink-0 p-5 bg-white border-t border-slate-100 z-20">
         <button id="sendBtn" type="button" class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 active:scale-[0.98] transition-all duration-200 shadow-sm disabled:opacity-70 disabled:pointer-events-none">
             <span id="btnText">Submit Lead</span>
@@ -128,36 +120,35 @@
             auth: {
                 clientId: "13428380-36ba-4c1b-a4f8-79a6cc76e928", 
                 authority: "https://login.microsoftonline.com/b4b6e20e-14bd-4419-bf0a-c7d2c948c513",
-                redirectUri: window.location.origin + window.location.pathname, // Must match Azure Portal
-                supportsNestedAppAuth: true // Explicitly enable NAA logic
+                redirectUri: window.location.origin + window.location.pathname, 
+                supportsNestedAppAuth: true
             },
-            cache: {
-                cacheLocation: "sessionStorage"
-            }
+            cache: { cacheLocation: "sessionStorage" }
         };
 
-        const graphScopes = ["Sites.ReadWrite.All"];
-        const SHAREPOINT_SITE_ID = "brandywinematerialsllc.sharepoint.com,07a1465e-a31a-4437-aca2-0efe61b7f2c6,4b1abd1c-08c6-4574-b350-654376a1e954";
-        const SHAREPOINT_LIST_ID = "e7c4c861-7fbb-4661-b0a8-6e37e588c9c3";
+        const graphScopes = ["Sites.ReadWrite.All", "User.Read"];
+        
+        // --- SHAREPOINT CONFIG ---
+        const SITE_ID = "brandywinematerialsllc.sharepoint.com,07a1465e-a31a-4437-aca2-0efe61b7f2c6,4b1abd1c-08c6-4574-b350-654376a1e954";
+        
+        // ! IMPORTANT: Replace these with your actual List GUIDs
+        const LIST_ID_LEADS   = "28088675-4516-4e32-8766-ebb99cbb75e3";
+        const LIST_ID_EVENTS  = "fa306d38-3403-4c29-9db8-f73c4acd63b0";
+        const LIST_ID_ANCHORS = "2af7b8ed-71c0-4bff-9d04-b3237d4dd388";
         // ==========================================
 
         let msalInstance;
 
         Office.onReady(async (info) => {
             if (info.host === Office.HostType.Outlook) {
-                // Initialize NAA (Nested App Auth)
                 await initializeMsal();
-                
-                // Initialize UI
                 initializeForm();
             }
         });
 
-        // --- AUTH: NAA INITIALIZATION ---
+        // --- AUTH ---
         async function initializeMsal() {
             try {
-                // createNestablePublicClientApplication is the key for NAA support
-                // It automatically detects if it is running inside Outlook
                 msalInstance = await msal.createNestablePublicClientApplication(msalConfig);
                 console.log("MSAL Initialized with NAA support");
             } catch (err) {
@@ -166,33 +157,26 @@
             }
         }
 
-        // --- AUTH: GET TOKEN ---
         async function getGraphAccessToken() {
-            if (!msalInstance) {
-                throw new Error("MSAL not initialized");
-            }
-
-            // In NAA, we check for an active account provided by the host
+            if (!msalInstance) throw new Error("MSAL not initialized");
             const account = msalInstance.getActiveAccount();
-            
-            const request = {
-                scopes: graphScopes,
-                account: account
-            };
-
+            const request = { scopes: graphScopes, account: account };
             try {
-                // Try to get token silently (NAA handles the brokerage to Outlook)
                 const result = await msalInstance.acquireTokenSilent(request);
                 return result.accessToken;
             } catch (error) {
-                console.warn("Silent auth failed, attempting popup:", error);
-                // Fallback to popup if silent fails (e.g., consent needed)
                 const result = await msalInstance.acquireTokenPopup(request);
                 return result.accessToken;
             }
         }
 
-        // --- UI LOGIC ---
+        function getCurrentUser() {
+            // Returns the name of the logged-in user from the MSAL account
+            const account = msalInstance ? msalInstance.getActiveAccount() : null;
+            return account ? (account.name || account.username) : "Unknown User";
+        }
+
+        // --- UI ---
         function initializeForm() {
             const item = Office.context.mailbox.item;
 
@@ -200,28 +184,26 @@
             document.getElementById("statusDot").classList.remove("bg-slate-200");
             document.getElementById("statusDot").classList.add("bg-emerald-400");
 
-            // Extract data
             const from = item.from || item.sender || {};
             const leadEmail = from.emailAddress || "";
             const leadName = from.displayName || "";
             
-            // Populate fields
             safeSetValue("email", leadEmail);
             safeSetValue("leadSubject", item.subject || "");
             
-            // Name parsing
             const parts = (leadName || "").trim().split(/\s+/);
             if (parts.length > 0) safeSetValue("firstName", parts[0]);
             if (parts.length > 1) safeSetValue("lastName", parts.slice(1).join(" "));
 
-            // Metadata
             safeSetValue("internetMessageId", item.internetMessageId || "");
+            safeSetValue("conversationId", item.conversationId || "");
+
             const created = item.dateTimeCreated || new Date();
             try {
                 const dt = created instanceof Date ? created : new Date(created);
                 safeSetValue("receivedTime", dt.toISOString());
             } catch {
-                safeSetValue("receivedTime", "");
+                safeSetValue("receivedTime", new Date().toISOString());
             }
 
             document.getElementById("sendBtn").addEventListener("click", sendLead);
@@ -240,7 +222,6 @@
             }
             alertBox.classList.remove("hidden");
             alertBox.textContent = message;
-            
             if (type === 'success') {
                 alertBox.className = "mt-3 p-2 bg-emerald-50 border border-emerald-100 rounded text-xs text-emerald-700";
             } else {
@@ -251,63 +232,104 @@
         function setLoading(isLoading) {
             const btn = document.getElementById("sendBtn");
             btn.disabled = isLoading;
-            document.getElementById("btnText").textContent = isLoading ? "Sending..." : "Submit Lead";
+            document.getElementById("btnText").textContent = isLoading ? "Processing..." : "Submit Lead";
             document.getElementById("btnIcon").style.display = isLoading ? "none" : "block";
             document.getElementById("btnSpinner").style.display = isLoading ? "block" : "none";
         }
 
-        // --- MAIN ACTION ---
+        // --- HELPERS ---
+        function generateUUID() {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                return crypto.randomUUID();
+            }
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        // --- MAIN LOGIC ---
         async function sendLead() {
             showAlert(null);
             setLoading(true);
 
             try {
-                // 1. Get Token via NAA
+                // 1. Get Token & Setup
                 const token = await getGraphAccessToken();
+                const leadId = generateUUID();
+                const now = new Date().toISOString();
+                const currentUser = getCurrentUser();
 
-                // 2. Prepare Data (MAPPED TO INTERNAL SHAREPOINT NAMES from your JSON)
-                const fields = {
-                    Title: getValue("leadSubject"),
-                    
-                    // Mapped fields based on your Graph Explorer response:
-                    field_1: getValue("email"),           // LeadEmail
-                    field_2: getValue("firstName"),       // FirstName
-                    field_3: getValue("lastName"),        // LastName
-                    field_4: getValue("company"),         // Company
-                    field_5: getValue("phone"),           // Phone
-                    field_6: getValue("leadMessage"),     // Message
-                    field_7: getValue("internetMessageId"), // InternetMessageId
-                    field_8: getValue("receivedTime"),    // ReceivedTime
-                    field_9: "Outlook Add-in"             // Source
+                // 2. Prepare Payloads
+                // NOTE: Keys below (e.g. "LeadId", "Owner") must match SharePoint INTERNAL names.
+                // If you created columns via UI, check settings for internal names (often field_1, etc.)
+                
+                // A. LIST: BWLeads
+                const leadPayload = {
+                    fields: {
+                        Title: getValue("leadSubject"), // Mandatory Title field
+                        LeadId: leadId,
+                        Owner: currentUser,
+                        Company: getValue("company"),
+                        Status: "Open",
+                        CreatedAt: now,
+                        LastActivityAt: now
+                    }
                 };
 
-                // 3. Send to Graph
-                const url = `https://graph.microsoft.com/v1.0/sites/${SHAREPOINT_SITE_ID}/lists/${SHAREPOINT_LIST_ID}/items`;
-                const response = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${token}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ fields })
-                });
+                // B. LIST: BWLeadEvents
+                const eventPayload = {
+                    fields: {
+                        LeadId: leadId,
+                        EventType: "System", // Initial creation event
+                        EventAt: now,
+                        Summary: "Lead Created",
+                        Details: getValue("leadMessage") || "Created via Outlook Add-in"
+                    }
+                };
 
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(`Graph Error: ${response.status} - ${errText}`);
+                // C. LIST: BWEmailAnchors
+                const anchorPayload = {
+                    fields: {
+                        Title: getValue("email"), // Usually Title is required, mapped to Email or generic
+                        LeadId: leadId,
+                        Email: getValue("email"),
+                        FirstName: getValue("firstName"),
+                        LastName: getValue("lastName"),
+                        ConversationId: getValue("conversationId"),
+                        StartTrackingFrom: now
+                    }
+                };
+
+                // 3. Execute Requests (Parallel)
+                const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+                const baseUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists`;
+
+                const reqLeads = fetch(`${baseUrl}/${LIST_ID_LEADS}/items`, { method: "POST", headers, body: JSON.stringify(leadPayload) });
+                const reqEvents = fetch(`${baseUrl}/${LIST_ID_EVENTS}/items`, { method: "POST", headers, body: JSON.stringify(eventPayload) });
+                const reqAnchors = fetch(`${baseUrl}/${LIST_ID_ANCHORS}/items`, { method: "POST", headers, body: JSON.stringify(anchorPayload) });
+
+                // Await all
+                const responses = await Promise.all([reqLeads, reqEvents, reqAnchors]);
+
+                // Check errors
+                for (const res of responses) {
+                    if (!res.ok) {
+                        const errText = await res.text();
+                        throw new Error(`SharePoint Error (${res.status}): ${errText}`);
+                    }
                 }
 
                 // 4. Success UI
-                showAlert("Lead saved to SharePoint!", 'success');
+                showAlert("Lead & Anchors created successfully!", 'success');
                 setLoading(false);
                 markEmailAsProcessed();
                 
-                // Close panel after delay
                 setTimeout(() => { try { Office.context.ui.closeContainer(); } catch {} }, 2000);
 
             } catch (err) {
                 console.error(err);
-                showAlert("Error sending lead: " + err.message, 'error');
+                showAlert("Error: " + err.message, 'error');
                 setLoading(false);
             }
         }
@@ -317,7 +339,6 @@
         }
 
         function markEmailAsProcessed() {
-            // Adds a category to the email in Outlook
             const item = Office.context.mailbox.item;
             item.categories.addAsync(["Lead Submitted"], (result) => {
                 if (result.status === Office.AsyncResultStatus.Failed) {
