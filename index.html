@@ -164,6 +164,11 @@
         const LIST_ID_EVENTS  = "fa306d38-3403-4c29-9db8-f73c4acd63b0";
         const LIST_ID_ANCHORS = "2af7b8ed-71c0-4bff-9d04-b3237d4dd388";
         const ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/REPLACE_WITH_YOUR_ID/"; 
+
+        // Cache Configuration
+        const CACHE_KEY = "parts_list_cache";
+        const CACHE_TIME_KEY = "parts_list_timestamp";
+        const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
         // ==========================================
 
         let msalInstance;
@@ -205,37 +210,74 @@
         }
 
         async function loadPartNumbers() {
+            const searchInput = document.getElementById("partNumber");
+            
+            // 1. Check Cache
+            const cachedData = localStorage.getItem(CACHE_KEY);
+            const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
+            const isExpired = !cachedTime || (Date.now() - parseInt(cachedTime)) > CACHE_EXPIRY;
+
+            if (cachedData) {
+                try {
+                    masterPartsList = JSON.parse(cachedData);
+                    // ENABLE IMMEDIATELY if we have any data, even if old
+                    searchInput.disabled = false;
+                    searchInput.placeholder = "Search Part #...";
+                    renderDropdownOptions(masterPartsList);
+                    console.log(`Loaded ${masterPartsList.length} parts from cache.`);
+                    
+                    // If it's expired, start the refresh in the background
+                    if (isExpired) {
+                        console.log("Cache stale, refreshing in background...");
+                        fetchFreshParts(searchInput, true);
+                    }
+                    return;
+                } catch (e) {
+                    console.error("Cache corrupted, fetching fresh.");
+                }
+            }
+
+            // 3. No Cache at all - standard loading behavior
+            fetchFreshParts(searchInput, false);
+        }
+
+        async function fetchFreshParts(searchInput, isSilent) {
             try {
                 const token = await getGraphAccessToken();
                 let url = `https://graph.microsoft.com/v1.0/sites/${PARTS_SITE_ID}/lists/${LIST_ID_PARTS}/items?expand=fields(select=PartNumber)&$top=999`;
                 
-                masterPartsList = [];
-                const searchInput = document.getElementById("partNumber");
-
+                let freshParts = [];
                 while (url) {
                     const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
                     if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
                     const data = await response.json();
                     if (data.value) {
                         data.value.forEach(item => {
-                            if (item.fields?.PartNumber) masterPartsList.push(item.fields.PartNumber);
+                            if (item.fields?.PartNumber) freshParts.push(item.fields.PartNumber);
                         });
                     }
                     url = data['@odata.nextLink'] || null;
                 }
 
-                // yield thread for large array processing
+                // Process and save without blocking main thread
                 setTimeout(() => {
-                    masterPartsList = [...new Set(masterPartsList)].sort((a, b) => a.localeCompare(b));
+                    masterPartsList = [...new Set(freshParts)].sort((a, b) => a.localeCompare(b));
+                    localStorage.setItem(CACHE_KEY, JSON.stringify(masterPartsList));
+                    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+                    
                     searchInput.disabled = false;
                     searchInput.placeholder = "Search Part #...";
-                    renderDropdownOptions(masterPartsList);
-                    console.log(`Ready: ${masterPartsList.length} parts.`);
+                    
+                    // Update current dropdown view if user is looking at it
+                    filterParts(); 
+                    console.log(`Updated to ${masterPartsList.length} parts.`);
                 }, 50);
 
             } catch (err) {
                 console.error("Error loading parts:", err);
-                document.getElementById("partNumber").placeholder = "Error loading parts";
+                if (!masterPartsList.length) {
+                    searchInput.placeholder = "Error loading parts";
+                }
             }
         }
 
@@ -260,7 +302,8 @@
         }
 
         function filterParts() {
-            const query = document.getElementById("partNumber").value.toLowerCase();
+            const input = document.getElementById("partNumber");
+            const query = input.value.toLowerCase();
             const filtered = masterPartsList.filter(p => p.toLowerCase().includes(query));
             renderDropdownOptions(filtered);
         }
