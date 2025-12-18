@@ -188,7 +188,7 @@
             cache: { cacheLocation: "sessionStorage" }
         };
 
-        const graphScopes = ["Sites.ReadWrite.All", "User.Read"];
+        const graphScopes = ["Sites.ReadWrite.All", "User.Read", "Contacts.Read"]; // Added Contacts.Read
         const SITE_ID = "brandywinematerialsllc.sharepoint.com,07a1465e-a31a-4437-aca2-0efe61b7f2c6,4b1abd1c-08c6-4574-b350-654376a1e954";
         const PARTS_SITE_ID = "brandywinematerialsllc-my.sharepoint.com,34727705-4fc4-4906-af45-3912e6c67ae6,e2900843-071f-49f4-8707-dcc7f5937ebe";
         const LIST_ID_PARTS = "f8d77713-736a-4fb9-a752-b928c187c9fd";
@@ -261,15 +261,12 @@
                     const val = opt.getAttribute("data-value");
                     const label = opt.getAttribute("data-label");
                     
-                    // Update State
                     statusHiddenInput.value = val;
                     currentText.textContent = label;
                     
-                    // Update UI Dot
                     dot.classList.remove("bg-emerald-400", "bg-sky-400");
                     dot.classList.add(val === "Open" ? "bg-emerald-400" : "bg-sky-400");
                     
-                    // Update Active Option
                     options.forEach(o => o.classList.remove("active"));
                     opt.classList.add("active");
                     
@@ -365,17 +362,77 @@
             }
         }
 
-        function initializeForm() {
+        // --- AUTO-FILL HELPERS ---
+        function extractCompanyFromEmail(email) {
+            if (!email || !email.includes('@')) return "";
+            const domain = email.split('@')[1].toLowerCase();
+            const commonProviders = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'aol.com', 'msn.com'];
+            if (commonProviders.includes(domain)) return "";
+            let company = domain.split('.')[0];
+            return company.charAt(0).toUpperCase() + company.slice(1);
+        }
+
+        async function resolveCompanyInfo(email) {
+            if (!email) return;
+
+            // Step 1: Try Graph Search (Contacts & Directory)
+            try {
+                const token = await getGraphAccessToken();
+                
+                // First attempt: Check Personal Contacts
+                const contactUrl = `https://graph.microsoft.com/v1.0/me/contacts?$filter=emailAddresses/any(a:a/address eq '${email}')&$select=companyName`;
+                const contactRes = await fetch(contactUrl, { headers: { "Authorization": `Bearer ${token}` } });
+                
+                if (contactRes.ok) {
+                    const data = await contactRes.json();
+                    if (data.value && data.value.length > 0 && data.value[0].companyName) {
+                        safeSetValue("company", data.value[0].companyName);
+                        console.log("Company found in contacts:", data.value[0].companyName);
+                        return;
+                    }
+                }
+
+                // Second attempt: Check Organization Directory (Global Address List)
+                const userUrl = `https://graph.microsoft.com/v1.0/users?$filter=mail eq '${email}' or userPrincipalName eq '${email}'&$select=companyName`;
+                const userRes = await fetch(userUrl, { headers: { "Authorization": `Bearer ${token}` } });
+
+                if (userRes.ok) {
+                    const data = await userRes.json();
+                    if (data.value && data.value.length > 0 && data.value[0].companyName) {
+                        safeSetValue("company", data.value[0].companyName);
+                        console.log("Company found in directory:", data.value[0].companyName);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn("Graph contact search failed:", err);
+            }
+
+            // Step 3: Fallback to Domain Extraction if Graph found nothing
+            const suggested = extractCompanyFromEmail(email);
+            if (suggested) safeSetValue("company", suggested);
+        }
+
+        async function initializeForm() {
             const item = Office.context.mailbox.item;
             const from = item.from || item.sender || {};
-            safeSetValue("email", from.emailAddress || "");
+            const leadEmail = from.emailAddress || "";
+            
+            safeSetValue("email", leadEmail);
             safeSetValue("leadSubject", item.subject || "");
+            
+            // Trigger smarter company resolution
+            resolveCompanyInfo(leadEmail);
+
             const nameParts = (from.displayName || "").trim().split(/\s+/);
             if (nameParts.length > 0) safeSetValue("firstName", nameParts[0]);
             if (nameParts.length > 1) safeSetValue("lastName", nameParts.slice(1).join(" "));
+            
             safeSetValue("internetMessageId", item.internetMessageId || "");
             safeSetValue("conversationId", item.conversationId || "");
+            
             try { safeSetValue("receivedTime", new Date(item.dateTimeCreated).toISOString()); } catch { safeSetValue("receivedTime", new Date().toISOString()); }
+            
             document.getElementById("sendBtn").addEventListener("click", sendLead);
             loadPartNumbers();
         }
