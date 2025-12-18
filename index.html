@@ -6,7 +6,6 @@
     <title>Send Lead</title>
 
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -80,9 +79,20 @@
                         <input id="company" type="text" class="field" placeholder="Company Name" />
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-4h8v4"></path></svg>
                     </div>
+                    
                     <div class="input-group">
-                        <input id="phone" type="text" class="field" placeholder="Phone Number" />
-                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                        <select id="partNumber" class="field appearance-none cursor-pointer">
+                            <option value="" disabled selected>Select Part #</option>
+                            <option value="loading">Loading parts...</option>
+                        </select>
+                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                        </svg>
+                        <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -114,7 +124,7 @@
 
     <script>
         // ==========================================
-        //  CONFIGURATION (User Edits Required)
+        //  CONFIGURATION
         // ==========================================
         const msalConfig = {
             auth: {
@@ -128,10 +138,9 @@
 
         const graphScopes = ["Sites.ReadWrite.All", "User.Read"];
         
-        // --- SHAREPOINT CONFIG ---
         const SITE_ID = "brandywinematerialsllc.sharepoint.com,07a1465e-a31a-4437-aca2-0efe61b7f2c6,4b1abd1c-08c6-4574-b350-654376a1e954";
-        
-        // ! IMPORTANT: Replace these with your actual List GUIDs
+        const PARTS_SITE_ID = "brandywinematerialsllc-my.sharepoint.com,34727705-4fc4-4906-af45-3912e6c67ae6,e2900843-071f-49f4-8707-dcc7f5937ebe";
+        const LIST_ID_PARTS = "f8d77713-736a-4fb9-a752-b928c187c9fd";
         const LIST_ID_LEADS   = "28088675-4516-4e32-8766-ebb99cbb75e3";
         const LIST_ID_EVENTS  = "fa306d38-3403-4c29-9db8-f73c4acd63b0";
         const LIST_ID_ANCHORS = "2af7b8ed-71c0-4bff-9d04-b3237d4dd388";
@@ -146,11 +155,9 @@
             }
         });
 
-        // --- AUTH ---
         async function initializeMsal() {
             try {
                 msalInstance = await msal.createNestablePublicClientApplication(msalConfig);
-                console.log("MSAL Initialized with NAA support");
             } catch (err) {
                 console.error("Error initializing MSAL:", err);
                 showAlert("Authentication failed to initialize.", 'error');
@@ -171,27 +178,56 @@
         }
 
         function getCurrentUser() {
-            // Returns the name of the logged-in user from the MSAL account
             const account = msalInstance ? msalInstance.getActiveAccount() : null;
             return account ? (account.name || account.username) : "Unknown User";
         }
 
-        // --- UI ---
+        async function loadPartNumbers() {
+            try {
+                const token = await getGraphAccessToken();
+                const url = `https://graph.microsoft.com/v1.0/sites/${PARTS_SITE_ID}/lists/${LIST_ID_PARTS}/items?expand=fields(select=PartNumber)`;
+                
+                const response = await fetch(url, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+
+                const data = await response.json();
+                const select = document.getElementById("partNumber");
+                
+                select.innerHTML = '<option value="" disabled selected>Select Part #</option>';
+
+                if (data.value && data.value.length > 0) {
+                    data.value.forEach(item => {
+                        const partNum = item.fields.PartNumber;
+                        if (partNum) {
+                            const option = document.createElement("option");
+                            option.value = partNum;
+                            option.textContent = partNum;
+                            select.appendChild(option);
+                        }
+                    });
+                } else {
+                    select.innerHTML = '<option value="">No parts found</option>';
+                }
+            } catch (err) {
+                console.error("Error loading parts:", err);
+                const select = document.getElementById("partNumber");
+                select.innerHTML = '<option value="">Error loading parts</option>';
+            }
+        }
+
         function initializeForm() {
             const item = Office.context.mailbox.item;
-
-            // Status indicator
             document.getElementById("statusDot").classList.remove("bg-slate-200");
             document.getElementById("statusDot").classList.add("bg-emerald-400");
 
             const from = item.from || item.sender || {};
-            const leadEmail = from.emailAddress || "";
-            const leadName = from.displayName || "";
-            
-            safeSetValue("email", leadEmail);
+            safeSetValue("email", from.emailAddress || "");
             safeSetValue("leadSubject", item.subject || "");
             
-            const parts = (leadName || "").trim().split(/\s+/);
+            const parts = (from.displayName || "").trim().split(/\s+/);
             if (parts.length > 0) safeSetValue("firstName", parts[0]);
             if (parts.length > 1) safeSetValue("lastName", parts.slice(1).join(" "));
 
@@ -207,6 +243,7 @@
             }
 
             document.getElementById("sendBtn").addEventListener("click", sendLead);
+            loadPartNumbers();
         }
 
         function safeSetValue(id, val) {
@@ -237,11 +274,8 @@
             document.getElementById("btnSpinner").style.display = isLoading ? "block" : "none";
         }
 
-        // --- HELPERS ---
         function generateUUID() {
-            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-                return crypto.randomUUID();
-            }
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
                 var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
                 return v.toString(16);
@@ -251,49 +285,61 @@
         // --- MAIN LOGIC ---
         async function sendLead() {
             showAlert(null);
+
+            // Validation logic
+            const company = getValue("company");
+            const subject = getValue("leadSubject");
+            const email = getValue("email");
+
+            let missing = [];
+            if (!company) missing.push("Company Name");
+            if (!subject) missing.push("Subject Line");
+            if (!email) missing.push("Email");
+
+            if (missing.length > 0) {
+                showAlert("Please provide: " + missing.join(", "), 'error');
+                return;
+            }
+
             setLoading(true);
 
             try {
-                // 1. Get Token & Setup
                 const token = await getGraphAccessToken();
                 const leadId = generateUUID();
                 const now = new Date().toISOString();
                 const currentUser = getCurrentUser();
 
-                // 2. Prepare Payloads
-                // NOTE: Keys below (e.g. "LeadId", "Owner") must match SharePoint INTERNAL names.
-                // If you created columns via UI, check settings for internal names (often field_1, etc.)
-                
-                // A. LIST: BWLeads
+                const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+                const baseUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists`;
+
                 const leadPayload = {
                     fields: {
-                        Title: getValue("leadSubject"), // Mandatory Title field
+                        Title: subject,
                         LeadId: leadId,
                         Owner: currentUser,
-                        Company: getValue("company"),
+                        Company: company,
+                        PartNumber: partNum,
                         Status: "Open",
                         CreatedAt: now,
                         LastActivityAt: now
                     }
                 };
 
-                // B. LIST: BWLeadEvents
                 const eventPayload = {
                     fields: {
                         LeadId: leadId,
-                        EventType: "System", // Initial creation event
+                        EventType: "System",
                         EventAt: now,
                         Summary: "Lead Created",
                         Details: getValue("leadMessage") || "Created via Outlook Add-in"
                     }
                 };
 
-                // C. LIST: BWEmailAnchors
                 const anchorPayload = {
                     fields: {
-                        Title: getValue("email"), // Usually Title is required, mapped to Email or generic
+                        Title: email,
                         LeadId: leadId,
-                        Email: getValue("email"),
+                        Email: email,
                         FirstName: getValue("firstName"),
                         LastName: getValue("lastName"),
                         ConversationId: getValue("conversationId"),
@@ -301,18 +347,12 @@
                     }
                 };
 
-                // 3. Execute Requests (Parallel)
-                const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
-                const baseUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists`;
+                const responses = await Promise.all([
+                    fetch(`${baseUrl}/${LIST_ID_LEADS}/items`, { method: "POST", headers, body: JSON.stringify(leadPayload) }),
+                    fetch(`${baseUrl}/${LIST_ID_EVENTS}/items`, { method: "POST", headers, body: JSON.stringify(eventPayload) }),
+                    fetch(`${baseUrl}/${LIST_ID_ANCHORS}/items`, { method: "POST", headers, body: JSON.stringify(anchorPayload) })
+                ]);
 
-                const reqLeads = fetch(`${baseUrl}/${LIST_ID_LEADS}/items`, { method: "POST", headers, body: JSON.stringify(leadPayload) });
-                const reqEvents = fetch(`${baseUrl}/${LIST_ID_EVENTS}/items`, { method: "POST", headers, body: JSON.stringify(eventPayload) });
-                const reqAnchors = fetch(`${baseUrl}/${LIST_ID_ANCHORS}/items`, { method: "POST", headers, body: JSON.stringify(anchorPayload) });
-
-                // Await all
-                const responses = await Promise.all([reqLeads, reqEvents, reqAnchors]);
-
-                // Check errors
                 for (const res of responses) {
                     if (!res.ok) {
                         const errText = await res.text();
@@ -320,8 +360,7 @@
                     }
                 }
 
-                // 4. Success UI
-                showAlert("Lead & Anchors created successfully!", 'success');
+                showAlert("Lead submitted successfully!", 'success');
                 setLoading(false);
                 markEmailAsProcessed();
                 
@@ -335,7 +374,8 @@
         }
 
         function getValue(id) {
-            return (document.getElementById(id).value || "").trim();
+            const el = document.getElementById(id);
+            return el ? (el.value || "").trim() : "";
         }
 
         function markEmailAsProcessed() {
