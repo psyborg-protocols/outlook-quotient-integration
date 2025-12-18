@@ -40,11 +40,33 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        .status-select {
-            appearance: none; background: transparent; border: none; padding: 0; margin: 0;
-            font-size: 1rem; font-weight: 600; color: #0f172a; cursor: pointer; outline: none;
+        /* Prettier Status Dropdown Custom Styling */
+        .status-trigger {
+            display: flex; align-items: center; gap: 8px;
+            padding: 4px 8px; margin-left: -8px; border-radius: 6px;
+            transition: background 0.2s; cursor: pointer;
         }
+        .status-trigger:hover { background: #f1f5f9; }
+        
+        #statusDropdownMenu {
+            display: none; position: absolute; top: 100%; left: 1.25rem;
+            width: 180px; margin-top: 4px; background: white; 
+            border: 1px solid #e2e8f0; border-radius: 8px; z-index: 60;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            overflow: hidden; animation: slideDown 0.2s ease-out;
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .status-option {
+            padding: 10px 12px; font-size: 0.875rem; color: #334155;
+            display: flex; align-items: center; gap: 10px; cursor: pointer; transition: background 0.1s;
+        }
+        .status-option:hover { background: #f8fafc; color: #0f172a; }
+        .status-option.active { font-weight: 600; color: #2563eb; background: #eff6ff; }
 
+        /* Parts Dropdown */
         #partsDropdown {
             display: none; position: absolute; top: 100%; left: 0; right: 0;
             max-height: 220px; overflow-y: auto; background: white; border: 1px solid #e2e8f0;
@@ -61,15 +83,25 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
     
-    <div class="shrink-0 px-5 py-5 border-b border-slate-100 bg-white z-20">
+    <!-- HEADER WITH PRETTIER STATUS DROPDOWN -->
+    <div class="shrink-0 px-5 py-4 border-b border-slate-100 bg-white z-20 relative">
         <div class="flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                <div class="relative flex items-center">
-                    <select id="leadStatus" class="status-select pr-5">
-                        <option value="Open">New Lead</option>
-                        <option value="Ready for Quote">Ready for Quote</option>
-                    </select>
-                    <svg class="absolute right-0 w-3 h-3 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7"></path></svg>
+            <div class="relative">
+                <div id="statusTrigger" class="status-trigger group">
+                    <span id="currentStatusText" class="text-base font-semibold text-slate-900 select-none">New Lead</span>
+                    <svg class="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+                
+                <!-- Custom Menu -->
+                <div id="statusDropdownMenu">
+                    <div class="status-option active" data-value="Open" data-label="New Lead">
+                        <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                        New Lead
+                    </div>
+                    <div class="status-option" data-value="Ready for Quote" data-label="Ready for Quote">
+                        <div class="w-2 h-2 rounded-full bg-sky-400"></div>
+                        Ready for Quote
+                    </div>
                 </div>
             </div>
             <div id="statusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 transition-colors duration-300 shadow-sm"></div>
@@ -82,6 +114,7 @@
             <input type="hidden" id="internetMessageId" />
             <input type="hidden" id="conversationId" />
             <input type="hidden" id="receivedTime" />
+            <input type="hidden" id="leadStatusValue" value="Open" />
 
             <div style="margin-top:0;">
                 <label class="section-label">Contact Details</label>
@@ -104,7 +137,6 @@
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-4h8v4"></path></svg>
                     </div>
                     
-                    <!-- SEARCHABLE PART # DROPDOWN -->
                     <div class="input-group" id="partDropdownContainer">
                         <input id="partNumber" type="text" class="field" placeholder="Loading parts..." autocomplete="off" disabled />
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -165,10 +197,9 @@
         const LIST_ID_ANCHORS = "2af7b8ed-71c0-4bff-9d04-b3237d4dd388";
         const ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/REPLACE_WITH_YOUR_ID/"; 
 
-        // Cache Configuration
         const CACHE_KEY = "parts_list_cache";
         const CACHE_TIME_KEY = "parts_list_timestamp";
-        const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+        const CACHE_EXPIRY = 24 * 60 * 60 * 1000; 
         // ==========================================
 
         let msalInstance;
@@ -179,6 +210,7 @@
                 await initializeMsal();
                 initializeForm();
                 setupSearchableDropdown();
+                setupStatusDropdown();
             }
         });
 
@@ -186,8 +218,8 @@
             try {
                 msalInstance = await msal.createNestablePublicClientApplication(msalConfig);
             } catch (err) {
-                console.error("Error initializing MSAL:", err);
-                showAlert("Authentication failed to initialize.", 'error');
+                console.error("Error MSAL:", err);
+                showAlert("Authentication failed.");
             }
         }
 
@@ -209,10 +241,48 @@
             return account ? (account.name || account.username) : "Unknown User";
         }
 
+        // --- STATUS DROPDOWN LOGIC ---
+        function setupStatusDropdown() {
+            const trigger = document.getElementById("statusTrigger");
+            const menu = document.getElementById("statusDropdownMenu");
+            const options = document.querySelectorAll(".status-option");
+            const statusHiddenInput = document.getElementById("leadStatusValue");
+            const currentText = document.getElementById("currentStatusText");
+            const dot = document.getElementById("statusDot");
+
+            trigger.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const isVisible = menu.style.display === "block";
+                menu.style.display = isVisible ? "none" : "block";
+            });
+
+            options.forEach(opt => {
+                opt.addEventListener("click", () => {
+                    const val = opt.getAttribute("data-value");
+                    const label = opt.getAttribute("data-label");
+                    
+                    // Update State
+                    statusHiddenInput.value = val;
+                    currentText.textContent = label;
+                    
+                    // Update UI Dot
+                    dot.classList.remove("bg-emerald-400", "bg-sky-400");
+                    dot.classList.add(val === "Open" ? "bg-emerald-400" : "bg-sky-400");
+                    
+                    // Update Active Option
+                    options.forEach(o => o.classList.remove("active"));
+                    opt.classList.add("active");
+                    
+                    menu.style.display = "none";
+                });
+            });
+
+            document.addEventListener("click", () => { menu.style.display = "none"; });
+        }
+
+        // --- PARTS LOGIC ---
         async function loadPartNumbers() {
             const searchInput = document.getElementById("partNumber");
-            
-            // 1. Check Cache
             const cachedData = localStorage.getItem(CACHE_KEY);
             const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
             const isExpired = !cachedTime || (Date.now() - parseInt(cachedTime)) > CACHE_EXPIRY;
@@ -220,90 +290,50 @@
             if (cachedData) {
                 try {
                     masterPartsList = JSON.parse(cachedData);
-                    // ENABLE IMMEDIATELY if we have any data, even if old
                     searchInput.disabled = false;
                     searchInput.placeholder = "Search Part #...";
                     renderDropdownOptions(masterPartsList);
-                    console.log(`Loaded ${masterPartsList.length} parts from cache.`);
-                    
-                    // If it's expired, start the refresh in the background
-                    if (isExpired) {
-                        console.log("Cache stale, refreshing in background...");
-                        fetchFreshParts(searchInput, true);
-                    }
-                    return;
-                } catch (e) {
-                    console.error("Cache corrupted, fetching fresh.");
-                }
+                    if (!isExpired) return;
+                } catch (e) { localStorage.removeItem(CACHE_KEY); }
             }
 
-            // 3. No Cache at all - standard loading behavior
-            fetchFreshParts(searchInput, false);
+            fetchFreshParts(searchInput);
         }
 
-        async function fetchFreshParts(searchInput, isSilent) {
+        async function fetchFreshParts(searchInput) {
             try {
                 const token = await getGraphAccessToken();
                 let url = `https://graph.microsoft.com/v1.0/sites/${PARTS_SITE_ID}/lists/${LIST_ID_PARTS}/items?expand=fields(select=PartNumber)&$top=999`;
-                
                 let freshParts = [];
                 while (url) {
                     const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
-                    if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+                    if (!response.ok) throw new Error(`Fetch failed`);
                     const data = await response.json();
-                    if (data.value) {
-                        data.value.forEach(item => {
-                            if (item.fields?.PartNumber) freshParts.push(item.fields.PartNumber);
-                        });
-                    }
+                    if (data.value) data.value.forEach(item => { if (item.fields?.PartNumber) freshParts.push(item.fields.PartNumber); });
                     url = data['@odata.nextLink'] || null;
                 }
 
-                // Process and save without blocking main thread
                 setTimeout(() => {
                     masterPartsList = [...new Set(freshParts)].sort((a, b) => a.localeCompare(b));
                     localStorage.setItem(CACHE_KEY, JSON.stringify(masterPartsList));
                     localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-                    
                     searchInput.disabled = false;
                     searchInput.placeholder = "Search Part #...";
-                    
-                    // Update current dropdown view if user is looking at it
                     filterParts(); 
-                    console.log(`Updated to ${masterPartsList.length} parts.`);
                 }, 50);
-
-            } catch (err) {
-                console.error("Error loading parts:", err);
-                if (!masterPartsList.length) {
-                    searchInput.placeholder = "Error loading parts";
-                }
-            }
+            } catch (err) { console.error(err); }
         }
 
         function setupSearchableDropdown() {
             const input = document.getElementById("partNumber");
             const dropdown = document.getElementById("partsDropdown");
-
-            input.addEventListener("focus", () => {
-                if (masterPartsList.length > 0) {
-                    dropdown.style.display = "block";
-                    filterParts();
-                }
-            });
-
+            input.addEventListener("focus", () => { if (masterPartsList.length > 0) { dropdown.style.display = "block"; filterParts(); } });
             input.addEventListener("input", filterParts);
-
-            document.addEventListener("click", (e) => {
-                if (!document.getElementById("partDropdownContainer").contains(e.target)) {
-                    dropdown.style.display = "none";
-                }
-            });
+            document.addEventListener("click", (e) => { if (!document.getElementById("partDropdownContainer").contains(e.target)) dropdown.style.display = "none"; });
         }
 
         function filterParts() {
-            const input = document.getElementById("partNumber");
-            const query = input.value.toLowerCase();
+            const query = document.getElementById("partNumber").value.toLowerCase();
             const filtered = masterPartsList.filter(p => p.toLowerCase().includes(query));
             renderDropdownOptions(filtered);
         }
@@ -312,7 +342,6 @@
             const dropdown = document.getElementById("partsDropdown");
             const input = document.getElementById("partNumber");
             dropdown.innerHTML = "";
-            
             if (parts.length === 0) {
                 const div = document.createElement("div");
                 div.className = "part-option text-slate-400 italic pointer-events-none";
@@ -324,13 +353,9 @@
                     const div = document.createElement("div");
                     div.className = "part-option";
                     div.textContent = part;
-                    div.onclick = () => {
-                        input.value = part;
-                        dropdown.style.display = "none";
-                    };
+                    div.onclick = () => { input.value = part; dropdown.style.display = "none"; };
                     dropdown.appendChild(div);
                 });
-
                 if (parts.length > limit) {
                     const div = document.createElement("div");
                     div.className = "part-option text-slate-400 text-[10px] text-center uppercase tracking-wider border-t bg-slate-50 font-semibold";
@@ -340,49 +365,23 @@
             }
         }
 
-        function updateStatusDot() {
-            const status = document.getElementById("leadStatus").value;
-            const dot = document.getElementById("statusDot");
-            dot.classList.remove("bg-emerald-400", "bg-sky-400");
-            if (status === "Open") {
-                dot.classList.add("bg-emerald-400");
-            } else if (status === "Ready for Quote") {
-                dot.classList.add("bg-sky-400");
-            }
-        }
-
         function initializeForm() {
             const item = Office.context.mailbox.item;
-            document.getElementById("leadStatus").addEventListener("change", updateStatusDot);
-            updateStatusDot();
-
             const from = item.from || item.sender || {};
             safeSetValue("email", from.emailAddress || "");
             safeSetValue("leadSubject", item.subject || "");
-            
             const nameParts = (from.displayName || "").trim().split(/\s+/);
             if (nameParts.length > 0) safeSetValue("firstName", nameParts[0]);
             if (nameParts.length > 1) safeSetValue("lastName", nameParts.slice(1).join(" "));
-
             safeSetValue("internetMessageId", item.internetMessageId || "");
             safeSetValue("conversationId", item.conversationId || "");
-
-            const created = item.dateTimeCreated || new Date();
-            try {
-                const dt = new Date(created);
-                safeSetValue("receivedTime", dt.toISOString());
-            } catch {
-                safeSetValue("receivedTime", new Date().toISOString());
-            }
-
+            try { safeSetValue("receivedTime", new Date(item.dateTimeCreated).toISOString()); } catch { safeSetValue("receivedTime", new Date().toISOString()); }
             document.getElementById("sendBtn").addEventListener("click", sendLead);
             loadPartNumbers();
         }
 
-        function safeSetValue(id, val) {
-            const el = document.getElementById(id);
-            if (el) el.value = val;
-        }
+        function safeSetValue(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
+        function getValue(id) { const el = document.getElementById(id); return el ? (el.value || "").trim() : ""; }
 
         function showAlert(message, type = 'error') {
             const alertBox = document.getElementById("alertBox");
@@ -394,78 +393,47 @@
                 : "mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-600";
         }
 
-        function setLoading(isLoading) {
-            const btn = document.getElementById("sendBtn");
-            btn.disabled = isLoading;
-            document.getElementById("btnText").textContent = isLoading ? "Processing..." : "Submit Lead";
-            document.getElementById("btnIcon").style.display = isLoading ? "none" : "block";
-            document.getElementById("btnSpinner").style.display = isLoading ? "block" : "none";
-        }
-
-        function generateUUID() {
-            return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-            );
-        }
-
         async function sendLead() {
             showAlert(null);
-            const company = getValue("company");
-            const subject = getValue("leadSubject");
-            const partNum = getValue("partNumber");
-            const email = getValue("email");
-            const status = document.getElementById("leadStatus").value;
+            const data = {
+                company: getValue("company"), subject: getValue("leadSubject"),
+                partNum: getValue("partNumber"), email: getValue("email"),
+                status: document.getElementById("leadStatusValue").value
+            };
 
             let missing = [];
-            if (!company) missing.push("Company");
-            if (!subject) missing.push("Subject");
-            if (!partNum) missing.push("Part #");
-            if (!email) missing.push("Email");
+            if (!data.company) missing.push("Company");
+            if (!data.subject) missing.push("Subject");
+            if (!data.partNum) missing.push("Part #");
+            if (!data.email) missing.push("Email");
 
-            if (missing.length > 0) {
-                showAlert("Required: " + missing.join(", "));
-                return;
-            }
+            if (missing.length > 0) { showAlert("Required: " + missing.join(", ")); return; }
 
             setLoading(true);
             try {
-                if (status === "Ready for Quote") {
-                    await handleZapierWorkflow({ company, subject, partNum, email, status });
-                } else {
-                    await handleSharePointWorkflow({ company, subject, partNum, email, status });
-                }
-                showAlert(`Successfully ${status === "Ready for Quote" ? "sent to Zapier" : "saved to SharePoint"}!`, 'success');
-                setLoading(false);
+                if (data.status === "Ready for Quote") { await handleZapierWorkflow(data); } 
+                else { await handleSharePointWorkflow(data); }
+                showAlert("Success!", 'success');
                 markEmailAsProcessed();
                 setTimeout(() => Office.context.ui.closeContainer(), 2000);
-            } catch (err) {
-                console.error(err);
-                showAlert("Error: " + err.message);
-                setLoading(false);
-            }
+            } catch (err) { showAlert(err.message); } finally { setLoading(false); }
         }
 
         async function handleSharePointWorkflow(data) {
             const token = await getGraphAccessToken();
             const leadId = generateUUID();
             const now = new Date().toISOString();
-            const currentUser = getCurrentUser();
             const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
             const baseUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists`;
 
             const payloads = [
-                { id: LIST_ID_LEADS, body: { fields: { Title: data.subject, LeadId: leadId, Owner: currentUser, Company: data.company, PartNumber: data.partNum, Status: data.status, CreatedAt: now, LastActivityAt: now }}},
-                { id: LIST_ID_EVENTS, body: { fields: { LeadId: leadId, EventType: "System", EventAt: now, Summary: "Lead Created", Details: getValue("leadMessage") || `Created via Outlook (Status: ${data.status})` }}},
+                { id: LIST_ID_LEADS, body: { fields: { Title: data.subject, LeadId: leadId, Owner: getCurrentUser(), Company: data.company, PartNumber: data.partNum, Status: data.status, CreatedAt: now, LastActivityAt: now }}},
+                { id: LIST_ID_EVENTS, body: { fields: { LeadId: leadId, EventType: "System", EventAt: now, Summary: "Lead Created", Details: getValue("leadMessage") || `Outlook (Status: ${data.status})` }}},
                 { id: LIST_ID_ANCHORS, body: { fields: { Title: data.email, LeadId: leadId, Email: data.email, FirstName: getValue("firstName"), LastName: getValue("lastName"), ConversationId: getValue("conversationId"), StartTrackingFrom: now }}}
             ];
 
-            const responses = await Promise.all(payloads.map(p => 
-                fetch(`${baseUrl}/${p.id}/items`, { method: "POST", headers, body: JSON.stringify(p.body) })
-            ));
-
-            for (const res of responses) {
-                if (!res.ok) throw new Error(`SharePoint Error: ${res.status}`);
-            }
+            const res = await Promise.all(payloads.map(p => fetch(`${baseUrl}/${p.id}/items`, { method: "POST", headers, body: JSON.stringify(p.body) })));
+            if (res.some(r => !r.ok)) throw new Error(`Sync Error`);
         }
 
         async function handleZapierWorkflow(data) {
@@ -480,15 +448,15 @@
             await fetch(ZAPIER_WEBHOOK_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(payload) });
         }
 
-        function getValue(id) {
-            const el = document.getElementById(id);
-            return el ? (el.value || "").trim() : "";
+        function generateUUID() { return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }
+        function setLoading(isLoading) {
+            const btn = document.getElementById("sendBtn");
+            btn.disabled = isLoading;
+            document.getElementById("btnText").textContent = isLoading ? "Processing..." : "Submit Lead";
+            document.getElementById("btnSpinner").style.display = isLoading ? "block" : "none";
+            document.getElementById("btnIcon").style.display = isLoading ? "none" : "block";
         }
-
-        function markEmailAsProcessed() {
-            const item = Office.context.mailbox.item;
-            item.categories.addAsync(["Lead Submitted"]);
-        }
+        function markEmailAsProcessed() { Office.context.mailbox.item.categories.addAsync(["Lead Submitted"]); }
     </script>
 </body>
 </html>
