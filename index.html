@@ -38,17 +38,37 @@
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Status Dropdown Custom Styling */
+        .status-select {
+            appearance: none;
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #0f172a;
+            cursor: pointer;
+            outline: none;
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
     
-    <div class="shrink-0 px-5 py-4 border-b border-slate-100 bg-white z-20">
+    <!-- HEADER WITH STATUS DROPDOWN -->
+    <div class="shrink-0 px-5 py-5 border-b border-slate-100 bg-white z-20">
         <div class="flex justify-between items-center">
-            <div>
-                <h1 class="text-base font-semibold text-slate-900">New Lead</h1>
-                <p class="text-xs text-slate-500">Extract details from email</p>
+            <div class="flex items-center gap-2">
+                <div class="relative flex items-center">
+                    <select id="leadStatus" class="status-select pr-5">
+                        <option value="Open">New Lead</option>
+                        <option value="Ready for Quote">Ready for Quote</option>
+                    </select>
+                    <svg class="absolute right-0 w-3 h-3 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
             </div>
-            <div id="statusDot" class="w-2 h-2 rounded-full bg-slate-200"></div>
+            <div id="statusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 transition-colors duration-300"></div>
         </div>
         <div id="alertBox" class="hidden mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-600"></div>
     </div>
@@ -144,6 +164,9 @@
         const LIST_ID_LEADS   = "28088675-4516-4e32-8766-ebb99cbb75e3";
         const LIST_ID_EVENTS  = "fa306d38-3403-4c29-9db8-f73c4acd63b0";
         const LIST_ID_ANCHORS = "2af7b8ed-71c0-4bff-9d04-b3237d4dd388";
+
+        // Zapier Configuration
+        const ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/REPLACE_WITH_YOUR_ID/"; // Update with actual URL
         // ==========================================
 
         let msalInstance;
@@ -218,10 +241,21 @@
             }
         }
 
+        function updateStatusDot() {
+            const status = document.getElementById("leadStatus").value;
+            const dot = document.getElementById("statusDot");
+            dot.classList.remove("bg-emerald-400", "bg-sky-400");
+            if (status === "Open") {
+                dot.classList.add("bg-emerald-400");
+            } else if (status === "Ready for Quote") {
+                dot.classList.add("bg-sky-400");
+            }
+        }
+
         function initializeForm() {
             const item = Office.context.mailbox.item;
-            document.getElementById("statusDot").classList.remove("bg-slate-200");
-            document.getElementById("statusDot").classList.add("bg-emerald-400");
+            document.getElementById("leadStatus").addEventListener("change", updateStatusDot);
+            updateStatusDot();
 
             const from = item.from || item.sender || {};
             safeSetValue("email", from.emailAddress || "");
@@ -286,14 +320,16 @@
         async function sendLead() {
             showAlert(null);
 
-            // Validation logic
             const company = getValue("company");
             const subject = getValue("leadSubject");
+            const partNum = getValue("partNumber");
             const email = getValue("email");
+            const status = document.getElementById("leadStatus").value;
 
             let missing = [];
             if (!company) missing.push("Company Name");
             if (!subject) missing.push("Subject Line");
+            if (!partNum) missing.push("Part #");
             if (!email) missing.push("Email");
 
             if (missing.length > 0) {
@@ -304,73 +340,110 @@
             setLoading(true);
 
             try {
-                const token = await getGraphAccessToken();
-                const leadId = generateUUID();
-                const now = new Date().toISOString();
-                const currentUser = getCurrentUser();
-
-                const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
-                const baseUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists`;
-
-                const leadPayload = {
-                    fields: {
-                        Title: subject,
-                        LeadId: leadId,
-                        Owner: currentUser,
-                        Company: company,
-                        PartNumber: partNum,
-                        Status: "Open",
-                        CreatedAt: now,
-                        LastActivityAt: now
-                    }
-                };
-
-                const eventPayload = {
-                    fields: {
-                        LeadId: leadId,
-                        EventType: "System",
-                        EventAt: now,
-                        Summary: "Lead Created",
-                        Details: getValue("leadMessage") || "Created via Outlook Add-in"
-                    }
-                };
-
-                const anchorPayload = {
-                    fields: {
-                        Title: email,
-                        LeadId: leadId,
-                        Email: email,
-                        FirstName: getValue("firstName"),
-                        LastName: getValue("lastName"),
-                        ConversationId: getValue("conversationId"),
-                        StartTrackingFrom: now
-                    }
-                };
-
-                const responses = await Promise.all([
-                    fetch(`${baseUrl}/${LIST_ID_LEADS}/items`, { method: "POST", headers, body: JSON.stringify(leadPayload) }),
-                    fetch(`${baseUrl}/${LIST_ID_EVENTS}/items`, { method: "POST", headers, body: JSON.stringify(eventPayload) }),
-                    fetch(`${baseUrl}/${LIST_ID_ANCHORS}/items`, { method: "POST", headers, body: JSON.stringify(anchorPayload) })
-                ]);
-
-                for (const res of responses) {
-                    if (!res.ok) {
-                        const errText = await res.text();
-                        throw new Error(`SharePoint Error (${res.status}): ${errText}`);
-                    }
+                if (status === "Ready for Quote") {
+                    await handleZapierWorkflow({ company, subject, partNum, email, status });
+                } else {
+                    await handleSharePointWorkflow({ company, subject, partNum, email, status });
                 }
 
-                showAlert("Lead submitted successfully!", 'success');
+                showAlert(`Lead successfully ${status === "Ready for Quote" ? "sent for quote" : "saved to SharePoint"}!`, 'success');
                 setLoading(false);
                 markEmailAsProcessed();
-                
                 setTimeout(() => { try { Office.context.ui.closeContainer(); } catch {} }, 2000);
-
             } catch (err) {
                 console.error(err);
                 showAlert("Error: " + err.message, 'error');
                 setLoading(false);
             }
+        }
+
+        async function handleSharePointWorkflow(data) {
+            const token = await getGraphAccessToken();
+            const leadId = generateUUID();
+            const now = new Date().toISOString();
+            const currentUser = getCurrentUser();
+
+            const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+            const baseUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists`;
+
+            const leadPayload = {
+                fields: {
+                    Title: data.subject,
+                    LeadId: leadId,
+                    Owner: currentUser,
+                    Company: data.company,
+                    PartNumber: data.partNum,
+                    Status: data.status,
+                    CreatedAt: now,
+                    LastActivityAt: now
+                }
+            };
+
+            const eventPayload = {
+                fields: {
+                    LeadId: leadId,
+                    EventType: "System",
+                    EventAt: now,
+                    Summary: "Lead Created",
+                    Details: getValue("leadMessage") || `Created via Outlook Add-in (Status: ${data.status})`
+                }
+            };
+
+            const anchorPayload = {
+                fields: {
+                    Title: data.email,
+                    LeadId: leadId,
+                    Email: data.email,
+                    FirstName: getValue("firstName"),
+                    LastName: getValue("lastName"),
+                    ConversationId: getValue("conversationId"),
+                    StartTrackingFrom: now
+                }
+            };
+
+            const responses = await Promise.all([
+                fetch(`${baseUrl}/${LIST_ID_LEADS}/items`, { method: "POST", headers, body: JSON.stringify(leadPayload) }),
+                fetch(`${baseUrl}/${LIST_ID_EVENTS}/items`, { method: "POST", headers, body: JSON.stringify(eventPayload) }),
+                fetch(`${baseUrl}/${LIST_ID_ANCHORS}/items`, { method: "POST", headers, body: JSON.stringify(anchorPayload) })
+            ]);
+
+            for (const res of responses) {
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(`SharePoint Error (${res.status}): ${errText}`);
+                }
+            }
+        }
+
+        async function handleZapierWorkflow(data) {
+            const assembledSubject = `Quote Request: ${data.partNum} for ${data.company}`;
+            const now = new Date().toISOString();
+            
+            const payload = {
+                subject: assembledSubject,
+                company: data.company,
+                partNumber: data.partNum,
+                email: data.email,
+                firstName: getValue("firstName"),
+                lastName: getValue("lastName"),
+                originalSubject: data.subject,
+                message: getValue("leadMessage"),
+                submittedAt: now,
+                submittedBy: getCurrentUser(),
+                status: data.status,
+                internetMessageId: getValue("internetMessageId"),
+                conversationId: getValue("conversationId"),
+                stubUrl: "https://brandywinematerials.com/quotes/stub-update-pending" // Placeholder URL
+            };
+
+            // Sending as text/plain as requested. 
+            // We still stringify the JSON so Zapier can parse the content from the body.
+            const response = await fetch(ZAPIER_WEBHOOK_URL, {
+                method: "POST",
+                mode: "no-cors", 
+                headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify(payload)
+            });
         }
 
         function getValue(id) {
