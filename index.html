@@ -79,6 +79,14 @@
         }
         .part-option:last-child { border-bottom: none; }
         .part-option:hover { background-color: #f1f5f9; color: #2563eb; }
+
+        .suggestion-badge {
+            animation: fadeIn 0.4s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -145,6 +153,16 @@
                             <line x1="12" y1="22.08" x2="12" y2="12"></line>
                         </svg>
                         <div id="partsDropdown" class="no-scrollbar"></div>
+                        
+                        <!-- Suggestion Notification UI -->
+                        <div id="partSuggestion" class="hidden mt-2 p-2 bg-blue-50 border border-blue-100 rounded-md flex items-center justify-between suggestion-badge">
+                            <div class="flex items-center gap-2">
+                                <div class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+                                <span class="text-[10px] font-medium text-blue-700 uppercase tracking-tight">Found in email:</span>
+                                <span id="suggestedPartText" class="text-xs font-bold text-blue-900"></span>
+                            </div>
+                            <button type="button" id="applySuggestion" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline uppercase">Apply</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -188,7 +206,7 @@
             cache: { cacheLocation: "sessionStorage" }
         };
 
-        const graphScopes = ["Sites.ReadWrite.All", "User.Read", "Contacts.Read"]; // Added Contacts.Read
+        const graphScopes = ["Sites.ReadWrite.All", "User.Read", "Contacts.Read", "Mail.Read"]; 
         const SITE_ID = "brandywinematerialsllc.sharepoint.com,07a1465e-a31a-4437-aca2-0efe61b7f2c6,4b1abd1c-08c6-4574-b350-654376a1e954";
         const PARTS_SITE_ID = "brandywinematerialsllc-my.sharepoint.com,34727705-4fc4-4906-af45-3912e6c67ae6,e2900843-071f-49f4-8707-dcc7f5937ebe";
         const LIST_ID_PARTS = "f8d77713-736a-4fb9-a752-b928c187c9fd";
@@ -277,7 +295,7 @@
             document.addEventListener("click", () => { menu.style.display = "none"; });
         }
 
-        // --- PARTS LOGIC ---
+        // --- PARTS LOGIC & CONVERSATION SCANNING ---
         async function loadPartNumbers() {
             const searchInput = document.getElementById("partNumber");
             const cachedData = localStorage.getItem(CACHE_KEY);
@@ -290,6 +308,10 @@
                     searchInput.disabled = false;
                     searchInput.placeholder = "Search Part #...";
                     renderDropdownOptions(masterPartsList);
+                    
+                    // Once UI is ready with cached parts, scan the conversation
+                    scanConversationForParts(masterPartsList);
+                    
                     if (!isExpired) return;
                 } catch (e) { localStorage.removeItem(CACHE_KEY); }
             }
@@ -317,8 +339,62 @@
                     searchInput.disabled = false;
                     searchInput.placeholder = "Search Part #...";
                     filterParts(); 
+                    
+                    // Re-scan if parts were just updated
+                    scanConversationForParts(masterPartsList);
                 }, 50);
             } catch (err) { console.error(err); }
+        }
+
+        // --- CONVERSATION INTELLIGENCE ---
+        async function scanConversationForParts(parts) {
+            const conversationId = Office.context.mailbox.item.conversationId;
+            if (!conversationId || !parts || parts.length === 0) return;
+
+            try {
+                const token = await getGraphAccessToken();
+                // Get all messages in this conversation to find part numbers mentioned in previous replies
+                const url = `https://graph.microsoft.com/v1.0/me/messages?$filter=conversationId eq '${conversationId}'&$select=body,subject&$top=10`;
+                const res = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+                
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                // Combine subject and body text from all messages
+                let fullText = data.value.map(m => (m.subject + " " + m.body.content)).join(" ");
+                
+                // Normalize function: remove non-alphanumeric and spaces
+                const normalize = (str) => str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cleanConversation = normalize(fullText);
+
+                // Look for matches
+                const foundPart = parts.find(p => {
+                    const cleanPart = normalize(p);
+                    if (cleanPart.length < 3) return false; // Avoid matching tiny codes
+                    return cleanConversation.includes(cleanPart);
+                });
+
+                if (foundPart) {
+                    showPartSuggestion(foundPart);
+                }
+            } catch (err) {
+                console.warn("Scan failed:", err);
+            }
+        }
+
+        function showPartSuggestion(part) {
+            const container = document.getElementById("partSuggestion");
+            const textEl = document.getElementById("suggestedPartText");
+            const applyBtn = document.getElementById("applySuggestion");
+
+            textEl.textContent = part;
+            container.classList.remove("hidden");
+            
+            applyBtn.onclick = () => {
+                document.getElementById("partNumber").value = part;
+                container.classList.add("hidden");
+                // Optional: scroll to field or highlight
+            };
         }
 
         function setupSearchableDropdown() {
@@ -374,41 +450,27 @@
 
         async function resolveCompanyInfo(email) {
             if (!email) return;
-
-            // Step 1: Try Graph Search (Contacts & Directory)
             try {
                 const token = await getGraphAccessToken();
-                
-                // First attempt: Check Personal Contacts
                 const contactUrl = `https://graph.microsoft.com/v1.0/me/contacts?$filter=emailAddresses/any(a:a/address eq '${email}')&$select=companyName`;
                 const contactRes = await fetch(contactUrl, { headers: { "Authorization": `Bearer ${token}` } });
-                
                 if (contactRes.ok) {
                     const data = await contactRes.json();
                     if (data.value && data.value.length > 0 && data.value[0].companyName) {
                         safeSetValue("company", data.value[0].companyName);
-                        console.log("Company found in contacts:", data.value[0].companyName);
                         return;
                     }
                 }
-
-                // Second attempt: Check Organization Directory (Global Address List)
                 const userUrl = `https://graph.microsoft.com/v1.0/users?$filter=mail eq '${email}' or userPrincipalName eq '${email}'&$select=companyName`;
                 const userRes = await fetch(userUrl, { headers: { "Authorization": `Bearer ${token}` } });
-
                 if (userRes.ok) {
                     const data = await userRes.json();
                     if (data.value && data.value.length > 0 && data.value[0].companyName) {
                         safeSetValue("company", data.value[0].companyName);
-                        console.log("Company found in directory:", data.value[0].companyName);
                         return;
                     }
                 }
-            } catch (err) {
-                console.warn("Graph contact search failed:", err);
-            }
-
-            // Step 3: Fallback to Domain Extraction if Graph found nothing
+            } catch (err) { console.warn(err); }
             const suggested = extractCompanyFromEmail(email);
             if (suggested) safeSetValue("company", suggested);
         }
@@ -420,16 +482,14 @@
             
             safeSetValue("email", leadEmail);
             safeSetValue("leadSubject", item.subject || "");
+            safeSetValue("internetMessageId", item.internetMessageId || "");
+            safeSetValue("conversationId", item.conversationId || "");
             
-            // Trigger smarter company resolution
             resolveCompanyInfo(leadEmail);
 
             const nameParts = (from.displayName || "").trim().split(/\s+/);
             if (nameParts.length > 0) safeSetValue("firstName", nameParts[0]);
             if (nameParts.length > 1) safeSetValue("lastName", nameParts.slice(1).join(" "));
-            
-            safeSetValue("internetMessageId", item.internetMessageId || "");
-            safeSetValue("conversationId", item.conversationId || "");
             
             try { safeSetValue("receivedTime", new Date(item.dateTimeCreated).toISOString()); } catch { safeSetValue("receivedTime", new Date().toISOString()); }
             
