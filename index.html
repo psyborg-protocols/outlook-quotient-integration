@@ -52,6 +52,33 @@
             cursor: pointer;
             outline: none;
         }
+
+        /* Searchable Dropdown List Styling */
+        #partsDropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            z-index: 50;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .part-option {
+            padding: 8px 12px;
+            font-size: 0.875rem;
+            color: #1e293b;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .part-option:hover {
+            background-color: #f1f5f9;
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -100,18 +127,16 @@
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-4h8v4"></path></svg>
                     </div>
                     
-                    <div class="input-group">
-                        <select id="partNumber" class="field appearance-none cursor-pointer">
-                            <option value="" disabled selected>Select Part #</option>
-                            <option value="loading">Loading parts...</option>
-                        </select>
+                    <!-- SEARCHABLE PART # DROPDOWN -->
+                    <div class="input-group" id="partDropdownContainer">
+                        <input id="partNumber" type="text" class="field" placeholder="Search Part #..." autocomplete="off" />
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                             <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                             <line x1="12" y1="22.08" x2="12" y2="12"></line>
                         </svg>
-                        <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"></path></svg>
+                        <div id="partsDropdown" class="no-scrollbar">
+                            <!-- Options injected here -->
                         </div>
                     </div>
                 </div>
@@ -165,16 +190,17 @@
         const LIST_ID_EVENTS  = "fa306d38-3403-4c29-9db8-f73c4acd63b0";
         const LIST_ID_ANCHORS = "2af7b8ed-71c0-4bff-9d04-b3237d4dd388";
 
-        // Zapier Configuration
-        const ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/REPLACE_WITH_YOUR_ID/"; // Update with actual URL
+        const ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/REPLACE_WITH_YOUR_ID/"; 
         // ==========================================
 
         let msalInstance;
+        let masterPartsList = []; // Stores all loaded parts
 
         Office.onReady(async (info) => {
             if (info.host === Office.HostType.Outlook) {
                 await initializeMsal();
                 initializeForm();
+                setupSearchableDropdown();
             }
         });
 
@@ -208,36 +234,102 @@
         async function loadPartNumbers() {
             try {
                 const token = await getGraphAccessToken();
-                const url = `https://graph.microsoft.com/v1.0/sites/${PARTS_SITE_ID}/lists/${LIST_ID_PARTS}/items?expand=fields(select=PartNumber)`;
+                let url = `https://graph.microsoft.com/v1.0/sites/${PARTS_SITE_ID}/lists/${LIST_ID_PARTS}/items?expand=fields(select=PartNumber)&$top=999`;
                 
-                const response = await fetch(url, {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
+                masterPartsList = [];
+                const searchInput = document.getElementById("partNumber");
+                searchInput.placeholder = "Loading parts...";
 
-                if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-
-                const data = await response.json();
-                const select = document.getElementById("partNumber");
-                
-                select.innerHTML = '<option value="" disabled selected>Select Part #</option>';
-
-                if (data.value && data.value.length > 0) {
-                    data.value.forEach(item => {
-                        const partNum = item.fields.PartNumber;
-                        if (partNum) {
-                            const option = document.createElement("option");
-                            option.value = partNum;
-                            option.textContent = partNum;
-                            select.appendChild(option);
-                        }
+                // Handle Pagination: Follow @odata.nextLink until all items are fetched
+                while (url) {
+                    const response = await fetch(url, {
+                        headers: { "Authorization": `Bearer ${token}` }
                     });
-                } else {
-                    select.innerHTML = '<option value="">No parts found</option>';
+
+                    if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+
+                    const data = await response.json();
+                    
+                    if (data.value) {
+                        data.value.forEach(item => {
+                            if (item.fields && item.fields.PartNumber) {
+                                masterPartsList.push(item.fields.PartNumber);
+                            }
+                        });
+                    }
+
+                    url = data['@odata.nextLink'] || null;
                 }
+
+                // Remove duplicates and sort
+                masterPartsList = [...new Set(masterPartsList)].sort();
+                searchInput.placeholder = "Search Part #...";
+                console.log(`Loaded ${masterPartsList.length} unique parts.`);
+                
+                renderDropdownOptions(masterPartsList);
             } catch (err) {
                 console.error("Error loading parts:", err);
-                const select = document.getElementById("partNumber");
-                select.innerHTML = '<option value="">Error loading parts</option>';
+                document.getElementById("partNumber").placeholder = "Error loading parts";
+            }
+        }
+
+        // --- SEARCHABLE DROPDOWN LOGIC ---
+        function setupSearchableDropdown() {
+            const input = document.getElementById("partNumber");
+            const dropdown = document.getElementById("partsDropdown");
+
+            input.addEventListener("focus", () => {
+                if (masterPartsList.length > 0) {
+                    dropdown.style.display = "block";
+                    filterParts();
+                }
+            });
+
+            input.addEventListener("input", filterParts);
+
+            // Hide dropdown when clicking outside
+            document.addEventListener("click", (e) => {
+                if (!document.getElementById("partDropdownContainer").contains(e.target)) {
+                    dropdown.style.display = "none";
+                }
+            });
+        }
+
+        function filterParts() {
+            const query = document.getElementById("partNumber").value.toLowerCase();
+            const filtered = masterPartsList.filter(p => p.toLowerCase().includes(query));
+            renderDropdownOptions(filtered);
+        }
+
+        function renderDropdownOptions(parts) {
+            const dropdown = document.getElementById("partsDropdown");
+            const input = document.getElementById("partNumber");
+            
+            dropdown.innerHTML = "";
+            
+            if (parts.length === 0) {
+                const div = document.createElement("div");
+                div.className = "part-option text-slate-400 italic pointer-events-none";
+                div.textContent = "No results found";
+                dropdown.appendChild(div);
+            } else {
+                parts.slice(0, 100).forEach(part => { // Limit render to 100 for performance
+                    const div = document.createElement("div");
+                    div.className = "part-option";
+                    div.textContent = part;
+                    div.onclick = () => {
+                        input.value = part;
+                        dropdown.style.display = "none";
+                    };
+                    dropdown.appendChild(div);
+                });
+
+                if (parts.length > 100) {
+                    const div = document.createElement("div");
+                    div.className = "part-option text-slate-400 text-[10px] text-center uppercase tracking-wider border-t";
+                    div.textContent = `+ ${parts.length - 100} more results...`;
+                    dropdown.appendChild(div);
+                }
             }
         }
 
@@ -433,12 +525,10 @@
                 status: data.status,
                 internetMessageId: getValue("internetMessageId"),
                 conversationId: getValue("conversationId"),
-                stubUrl: "https://brandywinematerials.com/quotes/stub-update-pending" // Placeholder URL
+                stubUrl: "https://brandywinematerials.com/quotes/stub-update-pending" 
             };
 
-            // Sending as text/plain as requested. 
-            // We still stringify the JSON so Zapier can parse the content from the body.
-            const response = await fetch(ZAPIER_WEBHOOK_URL, {
+            await fetch(ZAPIER_WEBHOOK_URL, {
                 method: "POST",
                 mode: "no-cors", 
                 headers: { "Content-Type": "text/plain" },
