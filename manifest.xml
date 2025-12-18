@@ -12,7 +12,7 @@
   <DefaultLocale>en-US</DefaultLocale>
 
   <DisplayName DefaultValue="Send to Leads" />
-  <Description DefaultValue="Send emails directly to the Quotient integration backend." />
+  <Description DefaultValue="Send Leads to BrandyWise or Quotient." />
   
   <IconUrl DefaultValue="https://psyborg-protocols.github.io/outlook-quotient-integration/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://psyborg-protocols.github.io/outlook-quotient-integration/icon-80.png"/>
