@@ -145,24 +145,29 @@
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-4h8v4"></path></svg>
                     </div>
                     
-                    <div class="input-group" id="partDropdownContainer">
-                        <input id="partNumber" type="text" class="field" placeholder="Loading parts..." autocomplete="off" disabled />
-                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                        </svg>
-                        <div id="partsDropdown" class="no-scrollbar"></div>
-                        
-                        <!-- Suggestion Notification UI -->
-                        <div id="partSuggestion" class="hidden mt-2 p-2 bg-blue-50 border border-blue-100 rounded-md flex items-center justify-between suggestion-badge">
-                            <div class="flex items-center gap-2">
-                                <div class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
-                                <span class="text-[10px] font-medium text-blue-700 uppercase tracking-tight">Found in email:</span>
-                                <span id="suggestedPartText" class="text-xs font-bold text-blue-900"></span>
-                            </div>
-                            <button type="button" id="applySuggestion" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline uppercase">Apply</button>
+                    <div class="flex gap-3">
+                        <div class="input-group flex-[4]" id="partDropdownContainer">
+                            <input id="partNumber" type="text" class="field" placeholder="Loading parts..." autocomplete="off" disabled />
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                            </svg>
+                            <div id="partsDropdown" class="no-scrollbar"></div>
                         </div>
+
+                        <div class="input-group flex-1">
+                            <input id="quantity" type="number" class="field no-icon" placeholder="Qty" min="1" />
+                        </div>
+                    </div>
+
+                    <div id="partSuggestion" class="hidden mt-2 p-2 bg-blue-50 border border-blue-100 rounded-md flex items-center justify-between suggestion-badge">
+                        <div class="flex items-center gap-2">
+                            <div class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+                            <span class="text-[10px] font-medium text-blue-700 uppercase tracking-tight">Found in email:</span>
+                            <span id="suggestedPartText" class="text-xs font-bold text-blue-900"></span>
+                        </div>
+                        <button type="button" id="applySuggestion" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline uppercase">Apply</button>
                     </div>
                 </div>
             </div>
@@ -513,8 +518,11 @@
         async function sendLead() {
             showAlert(null);
             const data = {
-                company: getValue("company"), subject: getValue("leadSubject"),
-                partNum: getValue("partNumber"), email: getValue("email"),
+                company: getValue("company"), 
+                subject: getValue("leadSubject"),
+                partNum: getValue("partNumber"), 
+                qty: getValue("quantity"),
+                email: getValue("email"),
                 status: document.getElementById("leadStatusValue").value
             };
 
@@ -544,7 +552,7 @@
             const baseUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists`;
 
             const payloads = [
-                { id: LIST_ID_LEADS, body: { fields: { Title: data.subject, LeadId: leadId, Owner: getCurrentUser(), Company: data.company, PartNumber: data.partNum, Status: data.status, CreatedAt: now, LastActivityAt: now }}},
+                { id: LIST_ID_LEADS, body: { fields: { Title: data.subject, LeadId: leadId, Owner: getCurrentUser(), Company: data.company, PartNumber: data.partNum, Quantity: data.qty, Status: data.status, CreatedAt: now, LastActivityAt: now }}},
                 { id: LIST_ID_EVENTS, body: { fields: { LeadId: leadId, EventType: "System", EventAt: now, Summary: "Lead Created", Details: getValue("leadMessage") || `Outlook (Status: ${data.status})` }}},
                 { id: LIST_ID_ANCHORS, body: { fields: { Title: data.email, LeadId: leadId, Email: data.email, FirstName: getValue("firstName"), LastName: getValue("lastName"), ConversationId: getValue("conversationId"), StartTrackingFrom: now }}}
             ];
