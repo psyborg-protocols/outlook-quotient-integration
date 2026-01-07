@@ -180,7 +180,7 @@
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
                     </div>
                     <div class="input-group">
-                        <textarea id="leadMessage" rows="5" class="field" style="padding-left: 12px; min-height: 100px;" placeholder="Add notes, requirements, or quantities..."></textarea>
+                        <textarea id="leadMessage" rows="5" class="field" style="padding-left: 12px; min-height: 100px;" placeholder="Add notes, requirements, or additional details..."></textarea>
                     </div>
                 </div>
             </div>
@@ -261,7 +261,7 @@
 
         function getCurrentUser() {
             const account = msalInstance ? msalInstance.getActiveAccount() : null;
-            return account ? (account.name || account.username) : "Unknown User";
+            return account ? (account.username) : "Unknown User";
         }
 
         // --- STATUS DROPDOWN LOGIC ---
