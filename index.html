@@ -144,6 +144,13 @@
                         <input id="company" type="text" class="field" placeholder="Company Name" />
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-4h8v4"></path></svg>
                     </div>
+
+                    <div class="input-group" id="assignDropdownContainer">
+                        <input id="assignTo" type="text" class="field" placeholder="Assign to (Optional)" autocomplete="off" />
+                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                        <div id="assignDropdown" class="no-scrollbar" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 220px; overflow-y: auto; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 6px 6px; z-index: 50; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"></div>
+                    </div>
+                    <input type="hidden" id="assignToEmail" />
                     
                     <div class="flex gap-3">
                         <div class="input-group basis-7/10" id="partDropdownContainer">
@@ -211,8 +218,7 @@
             cache: { cacheLocation: "sessionStorage" }
         };
 
-        const graphScopes = ["Sites.ReadWrite.All", "User.Read", "Contacts.Read", "Mail.Read"]; 
-        const SITE_ID = "brandywinematerialsllc.sharepoint.com,07a1465e-a31a-4437-aca2-0efe61b7f2c6,4b1abd1c-08c6-4574-b350-654376a1e954";
+        const graphScopes = ["Sites.ReadWrite.All", "User.Read", "User.ReadBasic.All", "Contacts.Read", "Mail.Read"];        const SITE_ID = "brandywinematerialsllc.sharepoint.com,07a1465e-a31a-4437-aca2-0efe61b7f2c6,4b1abd1c-08c6-4574-b350-654376a1e954";
         const PARTS_SITE_ID = "brandywinematerialsllc-my.sharepoint.com,34727705-4fc4-4906-af45-3912e6c67ae6,e2900843-071f-49f4-8707-dcc7f5937ebe";
         const LIST_ID_PARTS = "f8d77713-736a-4fb9-a752-b928c187c9fd";
         const LIST_ID_LEADS   = "28088675-4516-4e32-8766-ebb99cbb75e3";
@@ -349,6 +355,88 @@
                     scanConversationForParts(masterPartsList);
                 }, 50);
             } catch (err) { console.error(err); }
+        }
+
+        // --- ORGANIZATION USERS LOGIC ---
+        let orgUsersList = [];
+
+        async function loadOrgUsers() {
+            try {
+                const token = await getGraphAccessToken();
+                // Fetch up to 999 users from the directory
+                const url = `https://graph.microsoft.com/v1.0/users?$select=displayName,mail,userPrincipalName&$top=999`;
+                const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    orgUsersList = data.value
+                        .map(u => ({ name: u.displayName, email: u.mail || u.userPrincipalName }))
+                        .filter(u => u.email) // ensure they have an email route
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                        
+                    setupAssignDropdown();
+                } else {
+                    console.warn("Could not fetch org users. Missing User.ReadBasic.All scope?");
+                }
+            } catch (err) {
+                console.error("Error fetching org users:", err);
+            }
+        }
+
+        function setupAssignDropdown() {
+            const input = document.getElementById("assignTo");
+            const dropdown = document.getElementById("assignDropdown");
+            
+            input.addEventListener("focus", () => { 
+                if (orgUsersList.length > 0) { dropdown.style.display = "block"; filterUsers(); } 
+            });
+            
+            input.addEventListener("input", () => {
+                // Clear hidden email if user starts typing manually
+                document.getElementById("assignToEmail").value = ""; 
+                filterUsers();
+            });
+            
+            document.addEventListener("click", (e) => { 
+                if (!document.getElementById("assignDropdownContainer").contains(e.target)) {
+                    dropdown.style.display = "none"; 
+                }
+            });
+        }
+
+        function filterUsers() {
+            const query = document.getElementById("assignTo").value.toLowerCase();
+            const filtered = orgUsersList.filter(u => 
+                u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query)
+            );
+            renderUserOptions(filtered);
+        }
+
+        function renderUserOptions(users) {
+            const dropdown = document.getElementById("assignDropdown");
+            const input = document.getElementById("assignTo");
+            const emailInput = document.getElementById("assignToEmail");
+            
+            dropdown.innerHTML = "";
+            if (users.length === 0) {
+                const div = document.createElement("div");
+                div.className = "part-option text-slate-400 italic pointer-events-none"; 
+                div.textContent = "No users found";
+                dropdown.appendChild(div);
+            } else {
+                const limit = 50; // Max render limit for performance
+                users.slice(0, limit).forEach(user => {
+                    const div = document.createElement("div");
+                    div.className = "part-option flex flex-col";
+                    div.innerHTML = `<span class="font-medium text-slate-900">${user.name}</span><span class="text-[11px] text-slate-500">${user.email}</span>`;
+                    div.onclick = () => { 
+                        input.value = user.name; 
+                        emailInput.value = user.email; 
+                        dropdown.style.display = "none"; 
+                    };
+                    dropdown.appendChild(div);
+                });
+            }
         }
 
         // --- CONVERSATION INTELLIGENCE ---
@@ -500,6 +588,7 @@
             
             document.getElementById("sendBtn").addEventListener("click", sendLead);
             loadPartNumbers();
+            loadOrgUsers();
         }
 
         function safeSetValue(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
@@ -523,7 +612,8 @@
                 partNum: getValue("partNumber"), 
                 qty: getValue("quantity"),
                 email: getValue("email"),
-                status: document.getElementById("leadStatusValue").value
+                status: document.getElementById("leadStatusValue").value,
+                assignedTo: getValue("assignToEmail") || getCurrentUser()
             };
 
             let missing = [];
@@ -552,7 +642,7 @@
             const baseUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists`;
 
             const payloads = [
-                { id: LIST_ID_LEADS, body: { fields: { Title: data.subject, LeadId: leadId, Owner: getCurrentUser(), Company: data.company, PartNumber: data.partNum, Quantity: data.qty, Status: data.status, CreatedAt: now, LastActivityAt: now }}},
+                { id: LIST_ID_LEADS, body: { fields: { Title: data.subject, LeadId: leadId, Owner: data.assignedTo, Company: data.company, PartNumber: data.partNum, Quantity: data.qty, Status: data.status, CreatedAt: now, LastActivityAt: now }}},
                 { id: LIST_ID_EVENTS, body: { fields: { LeadId: leadId, EventType: "System", EventAt: now, Summary: "Lead Created", Details: getValue("leadMessage") || `Outlook (Status: ${data.status})` }}},
                 { id: LIST_ID_ANCHORS, body: { fields: { Title: data.email, LeadId: leadId, Email: data.email, FirstName: getValue("firstName"), LastName: getValue("lastName"), ConversationId: getValue("conversationId"), StartTrackingFrom: now }}}
             ];
@@ -568,6 +658,7 @@
                 firstName: getValue("firstName"), lastName: getValue("lastName"),
                 message: getValue("leadMessage"), submittedAt: new Date().toISOString(),
                 submittedBy: getCurrentUser(), status: data.status,
+                assignedTo: data.assignedTo,
                 stubUrl: "https://brandywinematerials.com/quotes/stub-update-pending" 
             };
             await fetch(ZAPIER_WEBHOOK_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(payload) });
