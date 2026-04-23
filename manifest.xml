@@ -1,4 +1,4 @@
-<?xml version="1.1" encoding="UTF-8" standalone="yes"?>
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
@@ -7,7 +7,7 @@
   <!-- ===== Core metadata ===== -->
   <Id>01ee961d-5845-4284-adeb-208d395bd4ad</Id>
   <!-- Bumped version to ensure update triggers -->
-  <Version>1.0.0.2</Version>
+  <Version>1.0.0.3</Version>
   <ProviderName>Brandywine</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
 
@@ -99,7 +99,6 @@
     <Resources>
       <bt:Images>
         <bt:Image id="Icon.16x16" DefaultValue="https://psyborg-protocols.github.io/outlook-quotient-integration/icon-16.png"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://psyborg-protocols.github.io/outlook-quotient-integration/icon-32.png"/>
         <bt:Image id="Icon.32x32" DefaultValue="https://psyborg-protocols.github.io/outlook-quotient-integration/icon-32.png"/>
         <bt:Image id="Icon.80x80" DefaultValue="https://psyborg-protocols.github.io/outlook-quotient-integration/icon-80.png"/>
       </bt:Images>
