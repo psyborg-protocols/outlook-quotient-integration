@@ -302,6 +302,18 @@
             return account ? (account.username) : "Unknown User";
         }
 
+        function getEmailBodyAsync() {
+            return new Promise((resolve) => {
+                Office.context.mailbox.item.body.getAsync(Office.CoercionType.Text, (result) => {
+                    if (result.status === Office.AsyncResultStatus.Succeeded) {
+                        resolve(result.value);
+                    } else {
+                        resolve("");
+                    }
+                });
+            });
+        }
+
         // --- STATUS DROPDOWN LOGIC ---
         function setupStatusDropdown() {
             const trigger = document.getElementById("statusTrigger");
@@ -658,11 +670,40 @@
         }
 
         async function checkForExistingLead(email, emailReceivedTime, currentConversationId) {
-            if (!email) return false;
             try {
                 const token = await getGraphAccessToken();
                 
-                // 1. Fetch Anchors by Conversation ID or Email
+                // --- 1. NEW: Check for Embedded Lead ID (Catches Internal Forwards) ---
+                const bodyText = await getEmailBodyAsync();
+                const leadIdMatch = bodyText.match(/BrandyWiseLeadId:([a-zA-Z0-9\-]+)/);
+                
+                if (leadIdMatch && leadIdMatch[1]) {
+                    const extractedLeadId = leadIdMatch[1];
+                    const leadsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_LEADS}/items?expand=fields&$filter=fields/LeadId eq '${extractedLeadId}'`;
+                    const leadsRes = await fetch(leadsUrl, { headers: { "Authorization": `Bearer ${token}` } });
+                    
+                    if (leadsRes.ok) {
+                        const leadsData = await leadsRes.json();
+                        if (leadsData.value && leadsData.value.length > 0) {
+                            const leadItem = leadsData.value[0];
+                            if (leadItem.fields.Status !== 'Closed') {
+                                existingLeadData = {
+                                    itemId: leadItem.id,
+                                    leadId: leadItem.fields.LeadId,
+                                    title: leadItem.fields.Title,
+                                    company: leadItem.fields.Company,
+                                    status: leadItem.fields.Status,
+                                    owner: leadItem.fields.Owner
+                                };
+                                return true; 
+                            }
+                        }
+                    }
+                }
+
+                // --- 2. Fallback: Check Anchors (Catches normal customer replies) ---
+                if (!email) return false;
+                
                 const safeConvId = encodeURIComponent(currentConversationId);
                 const anchorsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_ANCHORS}/items?expand=fields&$filter=fields/ConversationId eq '${safeConvId}' or fields/Title eq '${email}'`;
                 const anchorsRes = await fetch(anchorsUrl, { headers: { "Authorization": `Bearer ${token}` } });
@@ -673,18 +714,15 @@
 
                 const emailDate = new Date(emailReceivedTime).getTime();
 
-                // 2. FILTER: Time Window and Conversation Boundary Check
                 const validAnchors = anchorsData.value.filter(a => {
                     const anchorConvId = a.fields.ConversationId;
                     const trackingStartDate = new Date(a.fields.StartTrackingFrom || 0).getTime();
 
-                    // Match A: Exact thread that started the lead
                     if (anchorConvId && currentConversationId && anchorConvId === currentConversationId) {
-                        a._isExactMatch = true; // Tag it for sorting priority
+                        a._isExactMatch = true; 
                         return true;
                     }
 
-                    // Match B: Arrived AFTER the lead was opened
                     if (emailDate >= (trackingStartDate - 300000)) {
                         a._isExactMatch = false; 
                         return true;
@@ -695,16 +733,12 @@
 
                 if (validAnchors.length === 0) return false;
 
-                // SORT LOGIC: 
-                // 1. Exact Conversation Matches ALWAYS go to the top.
-                // 2. If neither or both are exact matches, fallback to sorting by newest tracking date.
                 validAnchors.sort((a, b) => {
                     if (a._isExactMatch && !b._isExactMatch) return -1;
                     if (!a._isExactMatch && b._isExactMatch) return 1;
                     return new Date(b.fields.StartTrackingFrom) - new Date(a.fields.StartTrackingFrom);
                 });
 
-                // 3. Check if any of these valid Anchors belong to an ACTIVE lead
                 for (let anchor of validAnchors) {
                     const leadId = anchor.fields.LeadId;
                     if (!leadId) continue;
@@ -717,7 +751,6 @@
                         if (leadsData.value && leadsData.value.length > 0) {
                             const leadItem = leadsData.value[0];
                             
-                            // Display it only if it is an unclosed lead
                             if (leadItem.fields.Status !== 'Closed') {
                                 existingLeadData = {
                                     itemId: leadItem.id,
@@ -914,6 +947,7 @@
 
                 // This text appears at the top of the forwarded thread
                 const commentHtml = `
+                    <div style="display:none; width:0px; height:0px; overflow:hidden; font-size:0px; color:transparent;">BrandyWiseLeadId:${existingLeadData.leadId}</div>
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
                         <div style="background-color: #e0f2fe; padding: 20px; text-align: center; border-bottom: 1px solid #bae6fd;">
                             <h2 style="color: #0369a1; margin: 0;">New Lead Assigned</h2>
