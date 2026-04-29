@@ -902,6 +902,58 @@
             }
         }
 
+        async function closeExistingLead() {
+            // 1. Display the Warning
+            const isConfirmed = confirm("Are you sure you want to close this lead? This will stop all tracking, reminders, and smart status updates for this thread.");
+            if (!isConfirmed) return;
+
+            showAlert(null);
+            setLoading(true, "Closing Lead...");
+            
+            try {
+                const token = await getGraphAccessToken();
+                const now = new Date().toISOString();
+
+                // 2. Update Lead Status in SharePoint
+                const leadUpdateUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_LEADS}/items/${existingLeadData.itemId}`;
+                await fetch(leadUpdateUrl, {
+                    method: "PATCH",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        fields: { 
+                            Status: "Closed",
+                            LastActivityAt: now
+                        }
+                    })
+                });
+
+                // 3. Add System Event to Timeline
+                const eventUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_EVENTS}/items`;
+                await fetch(eventUrl, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        fields: {
+                            LeadId: existingLeadData.leadId,
+                            EventType: "System",
+                            EventAt: now,
+                            Summary: "Status Update",
+                            Details: "Status changed to: Closed via Outlook Add-on"
+                        }
+                    })
+                });
+
+                showAlert("Lead closed successfully!", 'success');
+                markEmailAsProcessed();
+                
+                // 4. Close the add-on pane
+                setTimeout(() => Office.context.ui.closeContainer(), 2000);
+            } catch (err) {
+                showAlert("Failed to close lead: " + err.message);
+                setLoading(false);
+            }
+        }
+
         async function sendLead() {
             showAlert(null);
             const data = {
