@@ -629,7 +629,7 @@
                 if (data.status === "Ready for Quote") { await handleZapierWorkflow(data); } 
                 else { await handleSharePointWorkflow(data); }
                 
-                // NEW: Send Assignment Notification Email
+                // Send Assignment Notification Email
                 if (data.assignedTo) {
                     const currentEmail = (getCurrentUser() || "").toLowerCase();
                     // Prevent sending the email if the user assigned the lead to themselves
