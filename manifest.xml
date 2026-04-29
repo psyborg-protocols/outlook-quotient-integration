@@ -109,14 +109,14 @@
       </bt:Urls>
 
       <bt:ShortStrings>
-        <bt:String id="CustomTab.Label" DefaultValue="Quotient"/>
+        <bt:String id="CustomTab.Label" DefaultValue="Leads"/>
         <bt:String id="CommandsGroup.Label" DefaultValue="Quotient Actions"/>
-        <bt:String id="TaskpaneButton.Label" DefaultValue="Send to Quotient"/>
-        <bt:String id="TaskpaneButton.SupertipTitle" DefaultValue="Send to Quotient"/>
+        <bt:String id="TaskpaneButton.Label" DefaultValue="Send to Leads"/>
+        <bt:String id="TaskpaneButton.SupertipTitle" DefaultValue="Send to Leads"/>
       </bt:ShortStrings>
 
       <bt:LongStrings>
-        <bt:String id="TaskpaneButton.SupertipText" DefaultValue="Send this email to Quotient for processing."/>
+        <bt:String id="TaskpaneButton.SupertipText" DefaultValue="Send this email to Leads."/>
       </bt:LongStrings>
     </Resources>
 
