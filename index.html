@@ -628,10 +628,24 @@
             try {
                 if (data.status === "Ready for Quote") { await handleZapierWorkflow(data); } 
                 else { await handleSharePointWorkflow(data); }
+                
+                // NEW: Send Assignment Notification Email
+                if (data.assignedTo) {
+                    const currentEmail = (getCurrentUser() || "").toLowerCase();
+                    // Prevent sending the email if the user assigned the lead to themselves
+                    if (data.assignedTo.toLowerCase() !== currentEmail) {
+                        await sendLeadAssignmentEmail(data, data.assignedTo);
+                    }
+                }
+
                 showAlert("Success!", 'success');
                 markEmailAsProcessed();
                 setTimeout(() => Office.context.ui.closeContainer(), 2000);
-            } catch (err) { showAlert(err.message); } finally { setLoading(false); }
+            } catch (err) { 
+                showAlert(err.message); 
+            } finally { 
+                setLoading(false); 
+            }
         }
 
         async function handleSharePointWorkflow(data) {
@@ -662,6 +676,155 @@
                 stubUrl: "https://brandywinematerials.com/quotes/stub-update-pending" 
             };
             await fetch(ZAPIER_WEBHOOK_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(payload) });
+        }
+
+        // --- EMAIL NOTIFICATION LOGIC ---
+        async function sendLeadAssignmentEmail(data, toEmail) {
+            if (!data || !toEmail) return;
+
+            try {
+                const token = await getGraphAccessToken();
+                
+                const APP_URL = "https://app.brandywinemixers.com"; 
+                const leadsUrl = `${APP_URL}/?tab=leads`;
+
+                const emailBody = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                        <div style="background-color: #e0f2fe; padding: 20px; text-align: center; border-bottom: 1px solid #bae6fd;">
+                            <h2 style="color: #0369a1; margin: 0;">New Lead Assigned</h2>
+                        </div>
+                        <div style="padding: 30px;">
+                            <p>Hello,</p>
+                            <p>A lead has been assigned to you. The original request and conversation are included below.</p>
+                            
+                            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-top: 20px;">
+                                <h3 style="margin-top: 0; color: #0f172a; font-size: 1.1em;">${data.subject || 'New Lead'}</h3>
+                                <p style="margin: 5px 0; color: #475569;"><strong>Company:</strong> ${data.company || 'N/A'}</p>
+                                <p style="margin: 5px 0; color: #475569;"><strong>Requested Part:</strong> ${data.partNum || 'N/A'} (Qty: ${data.qty || 0})</p>
+                            </div>
+                            
+                            <div style="text-align: center; margin-top: 35px;">
+                                <a href="${leadsUrl}" 
+                                   style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+                                   View in Dashboard →
+                                </a>
+                            </div>
+
+                            <p style="margin-top: 30px; font-size: 0.9em; color: #888; text-align: center;">
+                                Please log into BrandyWise to begin tracking this lead.
+                            </p>
+                        </div>
+                    </div>
+                    <br><hr><br>
+                `;
+
+                // 1. Grab the Outlook Item ID and convert it to a Graph-compatible REST ID
+                const ewsId = Office.context.mailbox.item.itemId;
+                const restId = Office.context.mailbox.convertToRestId(ewsId, Office.MailboxEnums.RestVersion.v2_0);
+
+                // 2. Prepare the Forward Payload
+                const mailData = {
+                    Comment: emailBody, // The HTML header goes here
+                    ToRecipients: [
+                        {
+                            EmailAddress: { address: toEmail }
+                        }
+                    ]
+                };
+
+                // 3. Trigger the Forward Action
+                const endpoint = `https://graph.microsoft.com/v1.0/me/messages/${restId}/forward`;
+
+                const response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { 
+                        "Authorization": `Bearer ${token}`, 
+                        "Content-Type": "application/json" 
+                    },
+                    body: JSON.stringify(mailData)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Graph Forward Failed: ${errorText}`);
+                }
+
+            } catch (error) {
+                console.error("Error forwarding assignment email:", error);
+            }
+        }
+            if (!data || !toEmail) return;
+
+            try {
+                const token = await getGraphAccessToken();
+                
+                const APP_URL = "https://app.brandywinemixers.com"; 
+                const leadsUrl = `${APP_URL}/?tab=leads`;
+
+                const emailBody = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                        <div style="background-color: #e0f2fe; padding: 20px; text-align: center; border-bottom: 1px solid #bae6fd;">
+                            <h2 style="color: #0369a1; margin: 0;">New Lead Assigned</h2>
+                        </div>
+                        <div style="padding: 30px;">
+                            <p>Hello,</p>
+                            <p>A lead has been assigned to you and is ready for your review.</p>
+                            
+                            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-top: 20px;">
+                                <h3 style="margin-top: 0; color: #0f172a; font-size: 1.1em;">${data.subject || 'New Lead'}</h3>
+                                <p style="margin: 5px 0; color: #475569;"><strong>Company:</strong> ${data.company || 'N/A'}</p>
+                                <p style="margin: 5px 0; color: #475569;"><strong>Requested Part:</strong> ${data.partNum || 'N/A'} (Qty: ${data.qty || 0})</p>
+                            </div>
+                            
+                            <div style="text-align: center; margin-top: 35px;">
+                                <a href="${leadsUrl}" 
+                                   style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+                                   View in Dashboard →
+                                </a>
+                            </div>
+
+                            <p style="margin-top: 30px; font-size: 0.9em; color: #888; text-align: center;">
+                                Please log into BrandyWise to begin tracking this lead.
+                            </p>
+                        </div>
+                        <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 0.8em; color: #aaa;">
+                            BrandyWine Materials LLC
+                        </div>
+                    </div>
+                `;
+
+                const mailData = {
+                    message: {
+                        subject: `New Lead Assigned: ${data.company || data.subject}`,
+                        body: { contentType: "HTML", content: emailBody },
+                        toRecipients: [{ emailAddress: { address: toEmail } }]
+                    },
+                    saveToSentItems: true
+                };
+
+                const SHARED_MAILBOX = "reminders@brandywinematerials.com";
+                let endpoint = `https://graph.microsoft.com/v1.0/users/${SHARED_MAILBOX}/sendMail`;
+
+                let response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify(mailData)
+                });
+
+                // Fallback to user's own mailbox if shared mailbox permissions fail
+                if (!response.ok) {
+                    endpoint = `https://graph.microsoft.com/v1.0/me/sendMail`;
+                    response = await fetch(endpoint, {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                        body: JSON.stringify(mailData)
+                    });
+                    
+                    if (!response.ok) throw new Error(await response.text());
+                }
+            } catch (error) {
+                console.error("Error sending assignment email:", error);
+            }
         }
 
         function generateUUID() { return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }
