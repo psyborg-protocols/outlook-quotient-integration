@@ -195,6 +195,37 @@
         </form>
     </div>
 
+    <div id="existingLeadView" class="hidden px-5 py-6 space-y-6">
+        <div class="p-4 bg-blue-50 border border-blue-100 rounded-lg">
+            <h2 class="text-[10px] font-bold text-blue-800 uppercase tracking-widest mb-3">Connected Lead</h2>
+            <p id="extLeadSubject" class="text-sm font-semibold text-slate-900 mb-3"></p>
+            <div class="space-y-2 text-sm text-slate-700">
+                <div class="flex justify-between border-b border-blue-100/50 pb-1.5">
+                    <span class="font-medium text-slate-500">Company</span> 
+                    <span id="extLeadCompany" class="font-semibold"></span>
+                </div>
+                <div class="flex justify-between border-b border-blue-100/50 pb-1.5">
+                    <span class="font-medium text-slate-500">Status</span> 
+                    <span id="extLeadStatus" class="font-semibold text-blue-700"></span>
+                </div>
+                <div class="flex justify-between pb-1.5">
+                    <span class="font-medium text-slate-500">Current Owner</span> 
+                    <span id="extLeadOwner" class="font-semibold"></span>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <label class="section-label">Transfer Lead</label>
+            <div class="input-group" id="transferDropdownContainer">
+                <input id="transferTo" type="text" class="field" placeholder="Search team member..." autocomplete="off" />
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                <div id="transferDropdown" class="no-scrollbar" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 220px; overflow-y: auto; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 6px 6px; z-index: 50; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"></div>
+            </div>
+            <input type="hidden" id="transferToEmail" />
+        </div>
+    </div>    
+
     <div class="shrink-0 p-5 bg-white border-t border-slate-100 z-20">
         <button id="sendBtn" type="button" class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 active:scale-[0.98] transition-all duration-200 shadow-sm disabled:opacity-70 disabled:pointer-events-none">
             <span id="btnText">Submit Lead</span>
@@ -232,7 +263,8 @@
         // ==========================================
 
         let msalInstance;
-        let masterPartsList = []; 
+        let masterPartsList = [];
+        let existingLeadData = null; 
 
         Office.onReady(async (info) => {
             if (info.host === Office.HostType.Outlook) {
@@ -367,15 +399,16 @@
                 const url = `https://graph.microsoft.com/v1.0/users?$select=displayName,mail,userPrincipalName&$top=999`;
                 const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    orgUsersList = data.value
-                        .map(u => ({ name: u.displayName, email: u.mail || u.userPrincipalName }))
-                        .filter(u => u.email) // ensure they have an email route
-                        .sort((a, b) => a.name.localeCompare(b.name));
-                        
-                    setupAssignDropdown();
-                } else {
+            if (response.ok) {
+                const data = await response.json();
+                orgUsersList = data.value
+                    .map(u => ({ name: u.displayName, email: u.mail || u.userPrincipalName }))
+                    .filter(u => u.email)
+                    .sort((a, b) => a.name.localeCompare(b.name));
+                    
+                setupDropdown("assignTo", "assignDropdown", "assignToEmail");
+                setupDropdown("transferTo", "transferDropdown", "transferToEmail"); // Initialize transfer dropdown
+            } else {
                     console.warn("Could not fetch org users. Missing User.ReadBasic.All scope?");
                 }
             } catch (err) {
@@ -383,39 +416,39 @@
             }
         }
 
-        function setupAssignDropdown() {
-            const input = document.getElementById("assignTo");
-            const dropdown = document.getElementById("assignDropdown");
+        function setupDropdown(inputId, dropdownId, hiddenEmailId) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const dropdown = document.getElementById(dropdownId);
             
             input.addEventListener("focus", () => { 
-                if (orgUsersList.length > 0) { dropdown.style.display = "block"; filterUsers(); } 
+                if (orgUsersList.length > 0) { dropdown.style.display = "block"; filterUsers(inputId, dropdownId, hiddenEmailId); } 
             });
             
             input.addEventListener("input", () => {
-                // Clear hidden email if user starts typing manually
-                document.getElementById("assignToEmail").value = ""; 
-                filterUsers();
+                document.getElementById(hiddenEmailId).value = ""; 
+                filterUsers(inputId, dropdownId, hiddenEmailId);
             });
             
             document.addEventListener("click", (e) => { 
-                if (!document.getElementById("assignDropdownContainer").contains(e.target)) {
+                if (!input.parentElement.contains(e.target)) {
                     dropdown.style.display = "none"; 
                 }
             });
         }
 
-        function filterUsers() {
-            const query = document.getElementById("assignTo").value.toLowerCase();
+        function filterUsers(inputId, dropdownId, hiddenEmailId) {
+            const query = document.getElementById(inputId).value.toLowerCase();
             const filtered = orgUsersList.filter(u => 
                 u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query)
             );
-            renderUserOptions(filtered);
+            renderUserOptions(filtered, inputId, dropdownId, hiddenEmailId);
         }
 
-        function renderUserOptions(users) {
-            const dropdown = document.getElementById("assignDropdown");
-            const input = document.getElementById("assignTo");
-            const emailInput = document.getElementById("assignToEmail");
+        function renderUserOptions(users, inputId, dropdownId, hiddenEmailId) {
+            const dropdown = document.getElementById(dropdownId);
+            const input = document.getElementById(inputId);
+            const emailInput = document.getElementById(hiddenEmailId);
             
             dropdown.innerHTML = "";
             if (users.length === 0) {
@@ -424,7 +457,7 @@
                 div.textContent = "No users found";
                 dropdown.appendChild(div);
             } else {
-                const limit = 50; // Max render limit for performance
+                const limit = 50; 
                 users.slice(0, limit).forEach(user => {
                     const div = document.createElement("div");
                     div.className = "part-option flex flex-col";
@@ -573,10 +606,18 @@
             const from = item.from || item.sender || {};
             const leadEmail = from.emailAddress || "";
             
+            // Grab identifiers for the time-window check
+            const conversationId = item.conversationId || "";
+            let receivedTimeIso = new Date().toISOString();
+            try { 
+                receivedTimeIso = new Date(item.dateTimeCreated).toISOString(); 
+            } catch (e) {}
+
             safeSetValue("email", leadEmail);
             safeSetValue("leadSubject", item.subject || "");
             safeSetValue("internetMessageId", item.internetMessageId || "");
-            safeSetValue("conversationId", item.conversationId || "");
+            safeSetValue("conversationId", conversationId);
+            safeSetValue("receivedTime", receivedTimeIso);
             
             resolveCompanyInfo(leadEmail);
 
@@ -584,9 +625,20 @@
             if (nameParts.length > 0) safeSetValue("firstName", nameParts[0]);
             if (nameParts.length > 1) safeSetValue("lastName", nameParts.slice(1).join(" "));
             
-            try { safeSetValue("receivedTime", new Date(item.dateTimeCreated).toISOString()); } catch { safeSetValue("receivedTime", new Date().toISOString()); }
+            // --- NEW LOGIC: Check for existing leads with strict time boundaries ---
+            document.getElementById("btnText").textContent = "Checking Records...";
+            document.getElementById("sendBtn").disabled = true;
+
+            // Pass the received time and conversation ID to enforce the boundary
+            const exists = await checkForExistingLead(leadEmail, receivedTimeIso, conversationId);
             
-            document.getElementById("sendBtn").addEventListener("click", sendLead);
+            if (exists) {
+                setupExistingLeadUI();
+            } else {
+                document.getElementById("sendBtn").addEventListener("click", sendLead);
+                setLoading(false);
+            }
+
             loadPartNumbers();
             loadOrgUsers();
         }
@@ -602,6 +654,170 @@
             alertBox.className = type === 'success' 
                 ? "mt-3 p-2 bg-emerald-50 border border-emerald-100 rounded text-xs text-emerald-700"
                 : "mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-600";
+        }
+
+        async function checkForExistingLead(email, emailReceivedTime, currentConversationId) {
+            if (!email) return false;
+            try {
+                const token = await getGraphAccessToken();
+                
+                // 1. Fetch Anchors by Email
+                const anchorsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_ANCHORS}/items?expand=fields&$filter=fields/Title eq '${email}'`;
+                const anchorsRes = await fetch(anchorsUrl, { headers: { "Authorization": `Bearer ${token}` } });
+                
+                if (!anchorsRes.ok) return false;
+                const anchorsData = await anchorsRes.json();
+                if (!anchorsData.value || anchorsData.value.length === 0) return false;
+
+                const emailDate = new Date(emailReceivedTime).getTime();
+
+                // 2. FILTER: Time Window and Conversation Boundary Check
+                const validAnchors = anchorsData.value.filter(a => {
+                    const anchorConvId = a.fields.ConversationId;
+                    const trackingStartDate = new Date(a.fields.StartTrackingFrom || 0).getTime();
+
+                    // Match A: Exact thread that started the lead
+                    if (anchorConvId && currentConversationId && anchorConvId === currentConversationId) {
+                        return true;
+                    }
+
+                    // Match B: Arrived AFTER the lead was opened
+                    // (Subtracting a 5-minute buffer to account for minor sync delays if they create a lead then immediately reply)
+                    if (emailDate >= (trackingStartDate - 300000)) {
+                        return true;
+                    }
+
+                    return false;
+                });
+
+                if (validAnchors.length === 0) return false;
+
+                // Sort valid anchors by newest tracking date first, just in case there are multiple
+                validAnchors.sort((a, b) => new Date(b.fields.StartTrackingFrom) - new Date(a.fields.StartTrackingFrom));
+
+                // 3. Check if any of these valid Anchors belong to an ACTIVE lead
+                for (let anchor of validAnchors) {
+                    const leadId = anchor.fields.LeadId;
+                    if (!leadId) continue;
+
+                    const leadsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_LEADS}/items?expand=fields&$filter=fields/LeadId eq '${leadId}'`;
+                    const leadsRes = await fetch(leadsUrl, { headers: { "Authorization": `Bearer ${token}` } });
+                    
+                    if (leadsRes.ok) {
+                        const leadsData = await leadsRes.json();
+                        if (leadsData.value && leadsData.value.length > 0) {
+                            const leadItem = leadsData.value[0];
+                            
+                            // Display it only if it is an unclosed lead
+                            if (leadItem.fields.Status !== 'Closed') {
+                                existingLeadData = {
+                                    itemId: leadItem.id,
+                                    leadId: leadItem.fields.LeadId,
+                                    title: leadItem.fields.Title,
+                                    company: leadItem.fields.Company,
+                                    status: leadItem.fields.Status,
+                                    owner: leadItem.fields.Owner
+                                };
+                                return true; 
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Error checking existing lead:", e);
+            }
+            return false;
+        }
+
+        function setupExistingLeadUI() {
+            // Hide Standard Lead Form
+            document.getElementById("leadForm").classList.add("hidden");
+            
+            // Hide standard status dropdown controls at the top
+            document.getElementById("statusTrigger").style.pointerEvents = "none";
+            document.getElementById("currentStatusText").textContent = "Connected Lead";
+            document.getElementById("statusDot").classList.remove("bg-emerald-400");
+            document.getElementById("statusDot").classList.add("bg-blue-500");
+            
+            // Show and Populate Existing View
+            document.getElementById("existingLeadView").classList.remove("hidden");
+            document.getElementById("extLeadSubject").textContent = existingLeadData.title || "No Subject";
+            document.getElementById("extLeadCompany").textContent = existingLeadData.company || "Unknown";
+            document.getElementById("extLeadStatus").textContent = existingLeadData.status || "Active";
+            document.getElementById("extLeadOwner").textContent = existingLeadData.owner || "Unassigned";
+
+            // Switch Button Action
+            const btn = document.getElementById("sendBtn");
+            btn.removeEventListener("click", sendLead);
+            btn.addEventListener("click", transferLead);
+            
+            setLoading(false); // Enable the Transfer button
+        }
+
+        async function transferLead() {
+            showAlert(null);
+            const newOwnerEmail = document.getElementById("transferToEmail").value;
+            
+            if (!newOwnerEmail) {
+                showAlert("Please select a team member from the dropdown.");
+                return;
+            }
+            
+            if (newOwnerEmail.toLowerCase() === (existingLeadData.owner || "").toLowerCase()) {
+                showAlert("Lead is already assigned to this user.", "success");
+                return;
+            }
+
+            setLoading(true, "Transferring...");
+            try {
+                const token = await getGraphAccessToken();
+                const now = new Date().toISOString();
+
+                // 1. Update Lead Owner in SharePoint
+                const leadUpdateUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_LEADS}/items/${existingLeadData.itemId}`;
+                await fetch(leadUpdateUrl, {
+                    method: "PATCH",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        fields: { 
+                            Owner: newOwnerEmail,
+                            LastActivityAt: now
+                        }
+                    })
+                });
+
+                // 2. Add System Event to Timeline
+                const eventUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_EVENTS}/items`;
+                await fetch(eventUrl, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        fields: {
+                            LeadId: existingLeadData.leadId,
+                            EventType: "System",
+                            EventAt: now,
+                            Summary: "Lead Transferred",
+                            Details: `Transferred from ${existingLeadData.owner || 'Unassigned'} to ${newOwnerEmail}`
+                        }
+                    })
+                });
+
+                // 3. Send Notification Email to New Owner
+                const fakeLeadData = {
+                    subject: existingLeadData.title,
+                    company: existingLeadData.company,
+                    partNum: "See BrandyWise Dashboard",
+                    qty: "N/A"
+                };
+                await sendLeadAssignmentEmail(fakeLeadData, newOwnerEmail);
+
+                showAlert("Lead transferred successfully!", 'success');
+                markEmailAsProcessed();
+                setTimeout(() => Office.context.ui.closeContainer(), 2000);
+            } catch (err) {
+                showAlert("Transfer failed: " + err.message);
+                setLoading(false);
+            }
         }
 
         async function sendLead() {
@@ -684,12 +900,12 @@
 
             try {
                 const token = await getGraphAccessToken();
-                
                 const APP_URL = "https://app.brandywinemixers.com"; 
                 const leadsUrl = `${APP_URL}/?tab=leads`;
 
-                const emailBody = `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                // This text appears at the top of the forwarded thread
+                const commentHtml = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin-bottom: 20px; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
                         <div style="background-color: #e0f2fe; padding: 20px; text-align: center; border-bottom: 1px solid #bae6fd;">
                             <h2 style="color: #0369a1; margin: 0;">New Lead Assigned</h2>
                         </div>
@@ -705,17 +921,12 @@
                             
                             <div style="text-align: center; margin-top: 35px;">
                                 <a href="${leadsUrl}" 
-                                   style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-                                   View in Dashboard →
+                                style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+                                View in Dashboard →
                                 </a>
                             </div>
-
-                            <p style="margin-top: 30px; font-size: 0.9em; color: #888; text-align: center;">
-                                Please log into BrandyWise to begin tracking this lead.
-                            </p>
                         </div>
                     </div>
-                    <br><hr><br>
                 `;
 
                 // 1. Grab the Outlook Item ID and convert it to a Graph-compatible REST ID
@@ -724,7 +935,7 @@
 
                 // 2. Prepare the Forward Payload
                 const mailData = {
-                    Comment: emailBody, // The HTML header goes here
+                    Comment: commentHtml, // The HTML header gets injected here
                     ToRecipients: [
                         {
                             EmailAddress: { address: toEmail }
@@ -732,7 +943,7 @@
                     ]
                 };
 
-                // 3. Trigger the Forward Action
+                // 3. Trigger the Forward Action using the Graph API
                 const endpoint = `https://graph.microsoft.com/v1.0/me/messages/${restId}/forward`;
 
                 const response = await fetch(endpoint, {
@@ -751,90 +962,27 @@
 
             } catch (error) {
                 console.error("Error forwarding assignment email:", error);
-            }
-        }
-            if (!data || !toEmail) return;
-
-            try {
-                const token = await getGraphAccessToken();
-                
-                const APP_URL = "https://app.brandywinemixers.com"; 
-                const leadsUrl = `${APP_URL}/?tab=leads`;
-
-                const emailBody = `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
-                        <div style="background-color: #e0f2fe; padding: 20px; text-align: center; border-bottom: 1px solid #bae6fd;">
-                            <h2 style="color: #0369a1; margin: 0;">New Lead Assigned</h2>
-                        </div>
-                        <div style="padding: 30px;">
-                            <p>Hello,</p>
-                            <p>A lead has been assigned to you and is ready for your review.</p>
-                            
-                            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-top: 20px;">
-                                <h3 style="margin-top: 0; color: #0f172a; font-size: 1.1em;">${data.subject || 'New Lead'}</h3>
-                                <p style="margin: 5px 0; color: #475569;"><strong>Company:</strong> ${data.company || 'N/A'}</p>
-                                <p style="margin: 5px 0; color: #475569;"><strong>Requested Part:</strong> ${data.partNum || 'N/A'} (Qty: ${data.qty || 0})</p>
-                            </div>
-                            
-                            <div style="text-align: center; margin-top: 35px;">
-                                <a href="${leadsUrl}" 
-                                   style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-                                   View in Dashboard →
-                                </a>
-                            </div>
-
-                            <p style="margin-top: 30px; font-size: 0.9em; color: #888; text-align: center;">
-                                Please log into BrandyWise to begin tracking this lead.
-                            </p>
-                        </div>
-                        <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 0.8em; color: #aaa;">
-                            BrandyWine Materials LLC
-                        </div>
-                    </div>
-                `;
-
-                const mailData = {
-                    message: {
-                        subject: `New Lead Assigned: ${data.company || data.subject}`,
-                        body: { contentType: "HTML", content: emailBody },
-                        toRecipients: [{ emailAddress: { address: toEmail } }]
-                    },
-                    saveToSentItems: true
-                };
-
-                const SHARED_MAILBOX = "reminders@brandywinematerials.com";
-                let endpoint = `https://graph.microsoft.com/v1.0/users/${SHARED_MAILBOX}/sendMail`;
-
-                let response = await fetch(endpoint, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-                    body: JSON.stringify(mailData)
-                });
-
-                // Fallback to user's own mailbox if shared mailbox permissions fail
-                if (!response.ok) {
-                    endpoint = `https://graph.microsoft.com/v1.0/me/sendMail`;
-                    response = await fetch(endpoint, {
-                        method: "POST",
-                        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-                        body: JSON.stringify(mailData)
-                    });
-                    
-                    if (!response.ok) throw new Error(await response.text());
-                }
-            } catch (error) {
-                console.error("Error sending assignment email:", error);
+                throw error; // Re-throw so the main try/catch block can handle the UI alert if needed
             }
         }
 
         function generateUUID() { return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }
-        function setLoading(isLoading) {
+
+        function setLoading(isLoading, textOverride = null) {
             const btn = document.getElementById("sendBtn");
             btn.disabled = isLoading;
-            document.getElementById("btnText").textContent = isLoading ? "Processing..." : "Submit Lead";
+            const textSpan = document.getElementById("btnText");
+            
+            if (isLoading) {
+                textSpan.textContent = textOverride || "Processing...";
+            } else {
+                textSpan.textContent = existingLeadData ? "Transfer Lead" : "Submit Lead";
+            }
+            
             document.getElementById("btnSpinner").style.display = isLoading ? "block" : "none";
             document.getElementById("btnIcon").style.display = isLoading ? "none" : "block";
         }
+
         function markEmailAsProcessed() { Office.context.mailbox.item.categories.addAsync(["Lead Submitted"]); }
     </script>
 </body>
