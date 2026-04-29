@@ -662,8 +662,9 @@
             try {
                 const token = await getGraphAccessToken();
                 
-                // 1. Fetch Anchors by Email
-                const anchorsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_ANCHORS}/items?expand=fields&$filter=fields/Title eq '${email}'`;
+                // 1. Fetch Anchors by Conversation ID or Email
+                const safeConvId = encodeURIComponent(currentConversationId);
+                const anchorsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_ANCHORS}/items?expand=fields&$filter=fields/ConversationId eq '${safeConvId}' or fields/Title eq '${email}'`;
                 const anchorsRes = await fetch(anchorsUrl, { headers: { "Authorization": `Bearer ${token}` } });
                 
                 if (!anchorsRes.ok) return false;
@@ -944,7 +945,7 @@
                     </div>
                     <br><hr><br>
                 `;
-                
+
                 // 1. Grab the Outlook Item ID and convert it to a Graph-compatible REST ID
                 const ewsId = Office.context.mailbox.item.itemId;
                 const restId = Office.context.mailbox.convertToRestId(ewsId, Office.MailboxEnums.RestVersion.v2_0);
