@@ -952,14 +952,17 @@
 
                 // This text appears at the top of the forwarded thread
                 const commentHtml = `
-                    <div style="display:none; width:0px; height:0px; overflow:hidden; font-size:0px; color:transparent;">BrandyWiseLeadId:${existingLeadData.leadId}</div>
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                    <div style="display:none; width:0px; height:0px; overflow:hidden; font-size:0px; color:transparent;">BrandyWiseLeadId:${data.leadId || (typeof existingLeadData !== 'undefined' && existingLeadData ? existingLeadData.leadId : '')}</div>
+                    
+                    <div style="font-family: Arial, sans-serif; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                        
                         <div style="background-color: #e0f2fe; padding: 20px; text-align: center; border-bottom: 1px solid #bae6fd;">
-                            <h2 style="color: #0369a1; margin: 0;">New Lead Assigned</h2>
+                            <h2 style="color: #0369a1; margin: 0;">Lead Assigned to You</h2>
                         </div>
+                        
                         <div style="padding: 30px;">
                             <p>Hello,</p>
-                            <p>A lead has been assigned to you. The original request and conversation are included below.</p>
+                            <p>A lead has been routed to you. The most recent email thread is included below for context.</p>
                             
                             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-top: 20px;">
                                 <h3 style="margin-top: 0; color: #0f172a; font-size: 1.1em;">${data.subject || 'New Lead'}</h3>
@@ -973,18 +976,20 @@
                                 View in Dashboard →
                                 </a>
                             </div>
-
+                            
                             <p style="margin-top: 30px; font-size: 0.9em; color: #888; text-align: center;">
                                 Please log into BrandyWise to begin tracking this lead.
                             </p>
                         </div>
-                        <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 0.8em; color: #aaa;">
+                        
+                        <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 0.8em; color: #aaa; border-top: 1px solid #e0e0e0;">
                             BrandyWine Materials LLC
                         </div>
+                        
                     </div>
                     <br><hr><br>
                 `;
-
+                
                 // 1. Grab the Outlook Item ID and convert it to a Graph-compatible REST ID
                 const ewsId = Office.context.mailbox.item.itemId;
                 const restId = Office.context.mailbox.convertToRestId(ewsId, Office.MailboxEnums.RestVersion.v2_0);
