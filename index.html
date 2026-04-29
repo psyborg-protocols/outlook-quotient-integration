@@ -669,110 +669,136 @@
                 : "mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-600";
         }
 
+        // --- 1. The Main Parallel Checker ---
         async function checkForExistingLead(email, emailReceivedTime, currentConversationId) {
             try {
                 const token = await getGraphAccessToken();
-                
-                // --- 1. NEW: Check for Embedded Lead ID (Catches Internal Forwards) ---
-                const bodyText = await getEmailBodyAsync();
-                const leadIdMatch = bodyText.match(/BrandyWiseLeadId:([a-zA-Z0-9\-]+)/);
-                
-                if (leadIdMatch && leadIdMatch[1]) {
-                    const extractedLeadId = leadIdMatch[1];
-                    const leadsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_LEADS}/items?expand=fields&$filter=fields/LeadId eq '${extractedLeadId}'`;
-                    const leadsRes = await fetch(leadsUrl, { headers: { "Authorization": `Bearer ${token}` } });
-                    
-                    if (leadsRes.ok) {
-                        const leadsData = await leadsRes.json();
-                        if (leadsData.value && leadsData.value.length > 0) {
-                            const leadItem = leadsData.value[0];
-                            if (leadItem.fields.Status !== 'Closed') {
-                                existingLeadData = {
-                                    itemId: leadItem.id,
-                                    leadId: leadItem.fields.LeadId,
-                                    title: leadItem.fields.Title,
-                                    company: leadItem.fields.Company,
-                                    status: leadItem.fields.Status,
-                                    owner: leadItem.fields.Owner,
-                                    partNum: leadItem.fields.PartNumber,
-                                    qty: leadItem.fields.Quantity
-                                };
-                                return true; 
-                            }
-                        }
-                    }
+
+                // Fire both checks simultaneously
+                const [embeddedData, anchorData] = await Promise.all([
+                    checkEmbeddedId(token),
+                    checkAnchors(token, email, currentConversationId, emailReceivedTime)
+                ]);
+
+                // Embedded ID is the most precise, so it wins if both return data
+                const matchedLead = embeddedData || anchorData;
+
+                if (matchedLead) {
+                    existingLeadData = matchedLead; // Assign to your global variable
+                    return true;
                 }
 
-                // --- 2. Fallback: Check Anchors (Catches normal customer replies) ---
-                if (!email) return false;
-                
-                const safeConvId = encodeURIComponent(currentConversationId);
-                const anchorsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_ANCHORS}/items?expand=fields&$filter=fields/ConversationId eq '${safeConvId}' or fields/Title eq '${email}'`;
-                const anchorsRes = await fetch(anchorsUrl, { headers: { "Authorization": `Bearer ${token}` } });
-                
-                if (!anchorsRes.ok) return false;
-                const anchorsData = await anchorsRes.json();
-                if (!anchorsData.value || anchorsData.value.length === 0) return false;
-
-                const emailDate = new Date(emailReceivedTime).getTime();
-
-                const validAnchors = anchorsData.value.filter(a => {
-                    const anchorConvId = a.fields.ConversationId;
-                    const trackingStartDate = new Date(a.fields.StartTrackingFrom || 0).getTime();
-
-                    if (anchorConvId && currentConversationId && anchorConvId === currentConversationId) {
-                        a._isExactMatch = true; 
-                        return true;
-                    }
-
-                    if (emailDate >= (trackingStartDate - 300000)) {
-                        a._isExactMatch = false; 
-                        return true;
-                    }
-
-                    return false;
-                });
-
-                if (validAnchors.length === 0) return false;
-
-                validAnchors.sort((a, b) => {
-                    if (a._isExactMatch && !b._isExactMatch) return -1;
-                    if (!a._isExactMatch && b._isExactMatch) return 1;
-                    return new Date(b.fields.StartTrackingFrom) - new Date(a.fields.StartTrackingFrom);
-                });
-
-                for (let anchor of validAnchors) {
-                    const leadId = anchor.fields.LeadId;
-                    if (!leadId) continue;
-
-                    const leadsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_LEADS}/items?expand=fields&$filter=fields/LeadId eq '${leadId}'`;
-                    const leadsRes = await fetch(leadsUrl, { headers: { "Authorization": `Bearer ${token}` } });
-                    
-                    if (leadsRes.ok) {
-                        const leadsData = await leadsRes.json();
-                        if (leadsData.value && leadsData.value.length > 0) {
-                            const leadItem = leadsData.value[0];
-                            
-                            if (leadItem.fields.Status !== 'Closed') {
-                                existingLeadData = {
-                                    itemId: leadItem.id,
-                                    leadId: leadItem.fields.LeadId,
-                                    title: leadItem.fields.Title,
-                                    company: leadItem.fields.Company,
-                                    status: leadItem.fields.Status,
-                                    owner: leadItem.fields.Owner,
-                                    partNum: leadItem.fields.PartNumber,
-                                    qty: leadItem.fields.Quantity
-                                };
-                                return true; 
-                            }
-                        }
-                    }
-                }
+                return false;
             } catch (e) {
-                console.warn("Error checking existing lead:", e);
+                console.warn("Error running parallel lead checks:", e);
+                return false;
             }
-            return false;
+        }
+
+        // --- 2. Embedded ID Helper ---
+        async function checkEmbeddedId(token) {
+            const bodyText = await getEmailBodyAsync();
+            const leadIdMatch = bodyText.match(/BrandyWiseLeadId:([a-zA-Z0-9\-]+)/);
+            
+            if (leadIdMatch && leadIdMatch[1]) {
+                const extractedLeadId = leadIdMatch[1];
+                const leadsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_LEADS}/items?expand=fields&$filter=fields/LeadId eq '${extractedLeadId}'`;
+                const leadsRes = await fetch(leadsUrl, { headers: { "Authorization": `Bearer ${token}` } });
+                
+                if (leadsRes.ok) {
+                    const leadsData = await leadsRes.json();
+                    if (leadsData.value && leadsData.value.length > 0) {
+                        const leadItem = leadsData.value[0];
+                        if (leadItem.fields.Status !== 'Closed') {
+                            return extractLeadObject(leadItem);
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        // --- 3. Anchor Fallback Helper ---
+        async function checkAnchors(token, email, currentConversationId, emailReceivedTime) {
+            if (!email) return null;
+
+            const safeConvId = encodeURIComponent(currentConversationId);
+            
+            // FIX: Removed the 'or fields/Title eq' logic to prevent indexing crashes. 
+            // We now just grab by ConversationId first, which is the strongest fallback identifier anyway.
+            const anchorsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_ANCHORS}/items?expand=fields&$filter=fields/ConversationId eq '${safeConvId}'`;
+            const anchorsRes = await fetch(anchorsUrl, { headers: { "Authorization": `Bearer ${token}` } });
+            
+            if (!anchorsRes.ok) return null;
+            const anchorsData = await anchorsRes.json();
+            if (!anchorsData.value || anchorsData.value.length === 0) return null;
+
+            const emailDate = new Date(emailReceivedTime).getTime();
+
+            const validAnchors = anchorsData.value.filter(a => {
+                const anchorConvId = a.fields.ConversationId;
+                
+                // FIX: Safely parse tracking date. If empty, default to 0 to prevent NaN
+                const startStr = a.fields.StartTrackingFrom;
+                const trackingStartDate = startStr ? new Date(startStr).getTime() : 0;
+
+                if (anchorConvId && currentConversationId && anchorConvId === currentConversationId) {
+                    a._isExactMatch = true; 
+                    return true;
+                }
+
+                if (emailDate >= (trackingStartDate - 300000)) {
+                    a._isExactMatch = false; 
+                    return true;
+                }
+
+                return false;
+            });
+
+            if (validAnchors.length === 0) return null;
+
+            // Sort exact matches to the top, then by most recent
+            validAnchors.sort((a, b) => {
+                if (a._isExactMatch && !b._isExactMatch) return -1;
+                if (!a._isExactMatch && b._isExactMatch) return 1;
+                const bDate = b.fields.StartTrackingFrom ? new Date(b.fields.StartTrackingFrom).getTime() : 0;
+                const aDate = a.fields.StartTrackingFrom ? new Date(a.fields.StartTrackingFrom).getTime() : 0;
+                return bDate - aDate;
+            });
+
+            // Verify the Lead is still active
+            for (let anchor of validAnchors) {
+                const leadId = anchor.fields.LeadId;
+                if (!leadId) continue;
+
+                const leadsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_LEADS}/items?expand=fields&$filter=fields/LeadId eq '${leadId}'`;
+                const leadsRes = await fetch(leadsUrl, { headers: { "Authorization": `Bearer ${token}` } });
+                
+                if (leadsRes.ok) {
+                    const leadsData = await leadsRes.json();
+                    if (leadsData.value && leadsData.value.length > 0) {
+                        const leadItem = leadsData.value[0];
+                        if (leadItem.fields.Status !== 'Closed') {
+                            return extractLeadObject(leadItem);
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        // --- 4. Extractor Utility ---
+        function extractLeadObject(leadItem) {
+            return {
+                itemId: leadItem.id,
+                leadId: leadItem.fields.LeadId,
+                title: leadItem.fields.Title,
+                company: leadItem.fields.Company,
+                status: leadItem.fields.Status,
+                owner: leadItem.fields.Owner,
+                partNum: leadItem.fields.PartNumber,
+                qty: leadItem.fields.Quantity
+            };
         }
 
         function setupExistingLeadUI() {
@@ -954,7 +980,6 @@
 
                 // This text appears at the top of the forwarded thread
                 const commentHtml = `
-                    <div style="display:none; width:0px; height:0px; overflow:hidden; font-size:0px; color:transparent;">BrandyWiseLeadId:${data.leadId || (typeof existingLeadData !== 'undefined' && existingLeadData ? existingLeadData.leadId : '')}</div>
                     
                     <div style="font-family: Arial, sans-serif; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
                         
@@ -986,6 +1011,9 @@
                         
                         <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 0.8em; color: #aaa; border-top: 1px solid #e0e0e0;">
                             BrandyWine Materials LLC
+                        </div>
+                        <div style="font-size: 8px; color: #f8f9fa; text-align: center; margin-top: 10px;">
+                            Ref: BrandyWiseLeadId:${data.leadId || (typeof existingLeadData !== 'undefined' && existingLeadData ? existingLeadData.leadId : '')}
                         </div>
                         
                     </div>
