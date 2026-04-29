@@ -304,7 +304,7 @@
 
         function getEmailBodyAsync() {
             return new Promise((resolve) => {
-                Office.context.mailbox.item.body.getAsync(Office.CoercionType.Text, (result) => {
+                Office.context.mailbox.item.body.getAsync(Office.CoercionType.Html, (result) => {
                     if (result.status === Office.AsyncResultStatus.Succeeded) {
                         resolve(result.value);
                     } else {
@@ -890,7 +890,7 @@
             setLoading(true);
             try {
                 if (data.status === "Ready for Quote") { await handleZapierWorkflow(data); } 
-                else { await handleSharePointWorkflow(data); }
+                else { data.leadId = await handleSharePointWorkflow(data); }
                 
                 // Send Assignment Notification Email
                 if (data.assignedTo) {
@@ -926,6 +926,8 @@
 
             const res = await Promise.all(payloads.map(p => fetch(`${baseUrl}/${p.id}/items`, { method: "POST", headers, body: JSON.stringify(p.body) })));
             if (res.some(r => !r.ok)) throw new Error(`Sync Error`);
+
+            return leadId;
         }
 
         async function handleZapierWorkflow(data) {
