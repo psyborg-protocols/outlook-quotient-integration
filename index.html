@@ -678,12 +678,13 @@
 
                     // Match A: Exact thread that started the lead
                     if (anchorConvId && currentConversationId && anchorConvId === currentConversationId) {
+                        a._isExactMatch = true; // Tag it for sorting priority
                         return true;
                     }
 
                     // Match B: Arrived AFTER the lead was opened
-                    // (Subtracting a 5-minute buffer to account for minor sync delays if they create a lead then immediately reply)
                     if (emailDate >= (trackingStartDate - 300000)) {
+                        a._isExactMatch = false; 
                         return true;
                     }
 
@@ -692,8 +693,14 @@
 
                 if (validAnchors.length === 0) return false;
 
-                // Sort valid anchors by newest tracking date first, just in case there are multiple
-                validAnchors.sort((a, b) => new Date(b.fields.StartTrackingFrom) - new Date(a.fields.StartTrackingFrom));
+                // SORT LOGIC: 
+                // 1. Exact Conversation Matches ALWAYS go to the top.
+                // 2. If neither or both are exact matches, fallback to sorting by newest tracking date.
+                validAnchors.sort((a, b) => {
+                    if (a._isExactMatch && !b._isExactMatch) return -1;
+                    if (!a._isExactMatch && b._isExactMatch) return 1;
+                    return new Date(b.fields.StartTrackingFrom) - new Date(a.fields.StartTrackingFrom);
+                });
 
                 // 3. Check if any of these valid Anchors belong to an ACTIVE lead
                 for (let anchor of validAnchors) {
