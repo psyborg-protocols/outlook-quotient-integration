@@ -724,9 +724,8 @@
 
             const safeConvId = encodeURIComponent(currentConversationId);
             
-            // FIX: Removed the 'or fields/Title eq' logic to prevent indexing crashes. 
-            // We now just grab by ConversationId first, which is the strongest fallback identifier anyway.
-            const anchorsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_ANCHORS}/items?expand=fields&$filter=fields/ConversationId eq '${safeConvId}'`;
+            const safeEmail = encodeURIComponent(email);
+            const anchorsUrl = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${LIST_ID_ANCHORS}/items?expand=fields&$filter=fields/Title eq '${safeEmail}'`;
             const anchorsRes = await fetch(anchorsUrl, { headers: { "Authorization": `Bearer ${token}` } });
             
             if (!anchorsRes.ok) return null;
