@@ -693,7 +693,9 @@
                                     title: leadItem.fields.Title,
                                     company: leadItem.fields.Company,
                                     status: leadItem.fields.Status,
-                                    owner: leadItem.fields.Owner
+                                    owner: leadItem.fields.Owner,
+                                    partNum: leadItem.fields.PartNumber,
+                                    qty: leadItem.fields.Quantity
                                 };
                                 return true; 
                             }
@@ -758,7 +760,9 @@
                                     title: leadItem.fields.Title,
                                     company: leadItem.fields.Company,
                                     status: leadItem.fields.Status,
-                                    owner: leadItem.fields.Owner
+                                    owner: leadItem.fields.Owner,
+                                    partNum: leadItem.fields.PartNumber,
+                                    qty: leadItem.fields.Quantity
                                 };
                                 return true; 
                             }
@@ -845,13 +849,14 @@
                 });
 
                 // 3. Send Notification Email to New Owner
-                const fakeLeadData = {
+                const leadDataForEmail = {
                     subject: existingLeadData.title,
                     company: existingLeadData.company,
-                    partNum: "See BrandyWise Dashboard",
-                    qty: "N/A"
+                    partNum: existingLeadData.partNum || "Not specified",
+                    qty: existingLeadData.qty || "N/A",
+                    leadId: existingLeadData.leadId // Passed for the watermark!
                 };
-                await sendLeadAssignmentEmail(fakeLeadData, newOwnerEmail);
+                await sendLeadAssignmentEmail(leadDataForEmail, newOwnerEmail);
 
                 showAlert("Lead transferred successfully!", 'success');
                 markEmailAsProcessed();
